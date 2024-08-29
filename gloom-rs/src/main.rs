@@ -54,20 +54,79 @@ fn offset<T>(n: u32) -> *const c_void {
 
 // == // Generate your VAO here
 unsafe fn create_vao(vertices: &Vec<f32>, indices: &Vec<u32>) -> u32 {
-    // Implement me!
+    //! MUST BE IMPLEMENTED FOR MULTIPLE TRIANGLE NOT ONLY 1!!!!
 
-    // Also, feel free to delete comments :)
+    // Specify how many objects we want to go into VAO
+    //? For now only 1 triangle will be rendered through OpenGL pipeline
+    //TODO: Implement for an array of triangles of any size, not just 1 triangle
+    let triangle_count: i32 = 1;
 
-    // This should:
-    // * Generate a VAO and bind it
-    // * Generate a VBO and bind it
+    // * Generate a VAO and bind it (Vertex Array Object)
+    /*
+     Specify VAO ID
+     This is how we will interact with our VAO, not directly, but through the ID
+     This is just how OpenGL pipeline is built to be interacted with
+
+     We also make sure to use 32 bit data structures as this is the most common for OpenGL pipeline
+     I don't want to break and debug stuff so we keep everything like that
+     */
+    let mut vao_id: u32 = 0; 
+    /*
+     Generate VAO, 
+     This is where we generate the IDs as well, so it needs to be pointed to in memory
+     
+     ?We only generate 1 ID as we have only 1 triangle to render
+     */
+    gl::GenVertexArrays(triangle_count, &mut vao_id); 
+    /*
+     Bind VAO
+     Here we just specify where our VAO ID is located at 
+     This will allow us later to link VBO to shaders using VAO, as VAO will be bound
+
+     ?Since we only have 1 traingle to render, only 1 ID must be bound as its the ID of the only triangle
+     */
+    gl::BindVertexArray(vao_id);
+
+    // * Generate a VBO and bind it (Vertex Buffer Object)
+    /*
+     This step is very similar to the VAO generation, only with VBO ID instead and binding that
+     
+     Where it differs is the Binding process
+     As the VBO is a buffer that will hold all the data that will go to VAO, we need to specify target type of buffer
+     We are going to be using very basic ARRAY type buffer for all our data storage
+     There are other but I hav no idea what they do, supposedly better performance and space usage for different data buffer types
+
+     ?Only 1 triangle for now, so only 1 binding needed with the triangles VBO ID
+     */
+    let mut vbo_id: u32 = 0;
+    gl::GenBuffers(triangle_count, &mut vbo_id);
+    gl::BindBuffer(gl::ARRAY_BUFFER, vbo_id);
+
     // * Fill it with data
+    /*
+     Here we fill the VBO with data by calling a function
+     Then we specify data we want to fill teh VBO with
+
+     NOTE: Only 1 VBO ID can be filled at the time, so to fill multiple VBO we need to bind different VBO ID
+
+     We must specify what kind of data the VBO should have, it should be the same as the VBO itself obviously lol
+     Then we specify size of the data we fill VBO with, we specify in BYTES as memory is stored in BYTES (Must remember to say )
+     Then we point to the data we want to fill VBO with, using pointers to pint to the memory location
+     Then finally we will update usage of this VBO data, in our case STATIC_DRAW as we don't change the triangle often if at all 
+     
+     (Many other complex usages here for better performance when rendering, however we stick with basics cuz this is getting confusing for me lol)
+     */
+    let vertex_data_size = vertices.len() * std::
+    gl::BufferData(
+
+    );
+
     // * Configure a VAP for the data and enable it
     // * Generate a IBO and bind it
     // * Fill it with data
-    // * Return the ID of the VAO
 
-    0
+    // * Return the ID of the VAO
+    return vao_id
 }
 
 
