@@ -116,12 +116,42 @@ unsafe fn create_vao(vertices: &Vec<f32>, indices: &Vec<u32>) -> u32 {
      
      (Many other complex usages here for better performance when rendering, however we stick with basics cuz this is getting confusing for me lol)
      */
-    let vertex_data_size = vertices.len() * std::
     gl::BufferData(
-
+        gl::ARRAY_BUFFER,
+        byte_size_of_array(vertices),
+        pointer_to_array(vertices),
+        gl::STATIC_DRAW
     );
 
-    // * Configure a VAP for the data and enable it
+    // * Configure a VAP for the data and enable it (Vertex Attribute Pointer)
+    /*
+     Here we configure VAP and enabling it by calling a function
+
+     VAP Will specify what type of data in what type of data structure we passed down to VBO
+     VAP Will then specify how shaders should interpret VBO and which vertex shaders it should be associated with 
+     Since we only have triangles this specification should be straight forward 
+     
+     Specify position/index of the vertex attribute in shader program corresponds to the data passing through VBO. Since we only have triangles, this is very generic as there is only 1 Vertex Shader located at "in layout(location=0) vec3 vertex;", ie location = 0
+     Specify number of components per Vertex. Each vertex consists of 3 floats (32 bits) (x, y, z). So that is why 3 
+     Specify data type of each component, generic 32 bit floats as OpenGL likes it jesjes
+     Specify if we want to normalize the data, we don't, that is just cursed unless you ware working with very big and large values at the same time, which we don't
+     Specify Stride: number of bytes between each new vertex (3 32-bit floats per vertex)
+     Specify offset of the first component (should always be 0, otherwise what kind of data structure are we even handling X-X) 
+     
+     Lastly We enable VAP :)
+     */
+    let position_attribute_index: u32 = 0;
+    let number_of_vertexes_per_triangle: i32 = 3;
+    let stride: i32 = number_of_vertexes_per_triangle * size_of::<f32>();
+    gl::VertexAttribPointer(
+        position_attribute_index,
+        number_of_vertexes_per_triangle,
+        gl::FLOAT,
+        gl::FALSE,
+        stride,
+        std::ptr::null()
+    );
+
     // * Generate a IBO and bind it
     // * Fill it with data
 
