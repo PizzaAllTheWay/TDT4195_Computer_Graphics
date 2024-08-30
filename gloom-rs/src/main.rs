@@ -86,7 +86,7 @@ unsafe fn create_vao(vertices: &Vec<f32>, indices: &Vec<u32>) -> u32 {
      Where it differs is the Binding process
      As the VBO is a buffer that will hold all the data that will go to VAO, we need to specify target type of buffer
      We are going to be using very basic ARRAY type buffer for all our data storage
-     There are other but I hav no idea what they do, supposedly better performance and space usage for different data buffer types
+     There are other but I have no idea what they do, supposedly better performance and space usage for different data buffer types
      */
     let mut vbo_id: u32 = 0;
     gl::GenBuffers(triangle_count, &mut vbo_id);
@@ -100,7 +100,7 @@ unsafe fn create_vao(vertices: &Vec<f32>, indices: &Vec<u32>) -> u32 {
      NOTE: Only 1 VBO ID can be filled at the time, so to fill multiple VBO we need to bind different VBO ID
 
      We must specify what kind of data the VBO should have, it should be the same as the VBO itself obviously lol
-     Then we specify size of the data we fill VBO with, we specify in BYTES as memory is stored in BYTES (Must remember to say )
+     Then we specify size of the data we fill VBO with, we specify in BYTES as memory is stored in BYTES (Must remember to say)
      Then we point to the data we want to fill VBO with, using pointers to pint to the memory location
      Then finally we will update usage of this VBO data, in our case STATIC_DRAW as we don't change the triangle often if at all 
      
