@@ -55,6 +55,7 @@ fn offset<T>(n: u32) -> *const c_void {
 // == // Generate your VAO here
 unsafe fn create_vao(vertices: &Vec<f32>, indices: &Vec<u32>) -> u32 {
     //! MUST BE IMPLEMENTED FOR MULTIPLE TRIANGLE NOT ONLY 1!!!!
+    //! THIS FUNCTION MUST BE ABLE TO HANDLE AT LEAST 5+ TRIANGLES AT THE SAME TIME!!!
 
     // Specify how many objects we want to go into VAO
     //? For now only 1 triangle will be rendered through OpenGL pipeline
@@ -151,9 +152,50 @@ unsafe fn create_vao(vertices: &Vec<f32>, indices: &Vec<u32>) -> u32 {
         stride,
         std::ptr::null()
     );
+    gl::EnableVertexAttribArray(position_attribute_index); // Array/Pointer, same stuff at the end of the day, just some renaming, still enables VAP
 
-    // * Generate a IBO and bind it
+    // * Generate a IBO and bind it (Indices Buffer Object)
+    /*
+     Here we generate IBO and bind it
+
+     Even though we now have Vertex connection to the shaders
+     We need to index these Vertexes and specify how they are connected to each other to make primitives
+     For each of our 3 Vertexes, there must be created a primitive => Triangle per 3 vertexes
+     IBO tells OpenGL how these vertexes are combined to make a primitive
+
+     This is not necessary with just a single triangle in practice
+     However once one starts to create multiple triangles that interconnect, this becomes a crucial step
+     This step ensures and check that all the primitive Triangles are created in the most optimal way with our specifications and uses teh least amount of recourses
+     How IBO helps us is for example with 2 Triangles that are sharing the same border, instead of defining this border twice (once per triangle), we can define this border once and link it to bot primitives that share that same border
+     This way rendering happens more efficiently and more structured
+
+     Very similar to VBO, just that now we specify in the command that we want to fill IBO instead
+     ELEMENT_ARRAY_BUFFER is the one responsible for this
+     Now instead of Vertexes, we specify for Indices, same process as with VBO
+     */
+    let mut ibo_id: u32 = 0;
+    gl::GenBuffers(triangle_count, &mut ibo_id);
+    gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ibo_id);
+
     // * Fill it with data
+    /*
+     Here we will the IBO with indices data
+
+     Very similar to VBO
+     However, its a bit more simpler as we don't have to specify indices attributes
+     We only need to put inn the data, the VAP already specified how Vertexes are connected to shaders, and thus indirectly how indices should be connected 
+     This is because indices describe how Vertexes are connected to each other to build a primitive, in our case triangles
+
+     Very similar to VBO, just that now we specify in the command that we want to fill IBO instead
+     ELEMENT_ARRAY_BUFFER is the one responsible for this
+     Now instead of Vertexes, we specify for Indices, same process as with VBO
+    */
+    gl::BufferData(
+        gl::ELEMENT_ARRAY_BUFFER,
+        byte_size_of_array(indices),
+        pointer_to_array(indices),
+        gl::STATIC_DRAW
+    );
 
     // * Return the ID of the VAO
     return vao_id
@@ -219,12 +261,39 @@ fn main() {
             println!("GLSL\t: {}", util::get_gl_string(gl::SHADING_LANGUAGE_VERSION));
         }
 
-        // == // Set up your VAO around here
+        // * Set up Vertices
+        /*
+         Because of teh way simulating objects visually work, the vector becomes an array, ie v_computer=v_on_paper.Transposed
+         */
+        let vertices: Vec<f32> = vec![
+            (-0.6), (-0.6), 0.0, // v0
+              0.6 , (-0.6), 0.0, // v1
+              0.0 ,   0.6 , 0.0, // v2
+        ];
 
-        let my_vao = unsafe { 1337 };
+        // * Set up Indices
+        let indices: Vec<u32> = vec![
+            0, 1, 2, // Triangle1 (v0, v1, v2)
+        ];
+
+        // * Set up VAO
+        let my_vao: u32 = unsafe { 
+            create_vao(&vertices, &indices)          
+        };
 
 
-        // == // Set up your shaders here
+        // * Load, Compile and Link the shader pair
+        let simple_shader = unsafe {
+            shader::ShaderBuilder::new()
+            .attach_file("shaders/simple.vert")
+            .attach_file("shaders/simple.frag")
+                .link()
+        };
+
+        // * Activate the shader program
+        unsafe {
+            simple_shader.activate();
+        }
 
         // Basic usage of shader helper:
         // The example code below creates a 'shader' object.
@@ -302,13 +371,27 @@ fn main() {
             unsafe {
                 // Clear the color and depth buffers
                 gl::ClearColor(0.035, 0.046, 0.078, 1.0); // night sky
-                gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+                gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); // Clear the screen
 
 
-                // == // Issue the necessary gl:: commands to draw your scene here
+                // * Bind VAO and draw objects
+                /*
+                 We are binding the whole VAO
+                 Then we draw elements/object on the screen
+                 
+                 ! Coment more here
+                 */
+                unsafe {
+                    let indices_array_length: i32 = indices.len() as i32;
 
-
-
+                    gl::BindVertexArray(my_vao);
+                    gl::DrawElements(
+                        gl::TRIANGLES,
+                        indices_array_length,
+                        gl::UNSIGNED_INT,
+                        std::ptr::null()
+                    );
+                }
             }
 
             // Display the new color buffer on the display
