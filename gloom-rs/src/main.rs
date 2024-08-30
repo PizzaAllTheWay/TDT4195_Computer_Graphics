@@ -54,13 +54,8 @@ fn offset<T>(n: u32) -> *const c_void {
 
 // == // Generate your VAO here
 unsafe fn create_vao(vertices: &Vec<f32>, indices: &Vec<u32>) -> u32 {
-    //! MUST BE IMPLEMENTED FOR MULTIPLE TRIANGLE NOT ONLY 1!!!!
-    //! THIS FUNCTION MUST BE ABLE TO HANDLE AT LEAST 5+ TRIANGLES AT THE SAME TIME!!!
-
     // Specify how many objects we want to go into VAO
-    //? For now only 1 triangle will be rendered through OpenGL pipeline
-    //TODO: Implement for an array of triangles of any size, not just 1 triangle
-    let triangle_count: i32 = 1;
+    let triangle_count: i32 = (vertices.len()/9) as i32; // Calculates how many triangles were passed into the function
 
     // * Generate a VAO and bind it (Vertex Array Object)
     /*
@@ -75,16 +70,12 @@ unsafe fn create_vao(vertices: &Vec<f32>, indices: &Vec<u32>) -> u32 {
     /*
      Generate VAO, 
      This is where we generate the IDs as well, so it needs to be pointed to in memory
-     
-     ?We only generate 1 ID as we have only 1 triangle to render
      */
     gl::GenVertexArrays(triangle_count, &mut vao_id); 
     /*
      Bind VAO
      Here we just specify where our VAO ID is located at 
      This will allow us later to link VBO to shaders using VAO, as VAO will be bound
-
-     ?Since we only have 1 traingle to render, only 1 ID must be bound as its the ID of the only triangle
      */
     gl::BindVertexArray(vao_id);
 
@@ -96,8 +87,6 @@ unsafe fn create_vao(vertices: &Vec<f32>, indices: &Vec<u32>) -> u32 {
      As the VBO is a buffer that will hold all the data that will go to VAO, we need to specify target type of buffer
      We are going to be using very basic ARRAY type buffer for all our data storage
      There are other but I hav no idea what they do, supposedly better performance and space usage for different data buffer types
-
-     ?Only 1 triangle for now, so only 1 binding needed with the triangles VBO ID
      */
     let mut vbo_id: u32 = 0;
     gl::GenBuffers(triangle_count, &mut vbo_id);
@@ -266,18 +255,43 @@ fn main() {
          Because of teh way simulating objects visually work, the vector becomes an array, ie v_computer=v_on_paper.Transposed
          */
         let vertices: Vec<f32> = vec![
+            // Triangle 1
             (-0.6), (-0.6), 0.0, // v0
               0.6 , (-0.6), 0.0, // v1
               0.0 ,   0.6 , 0.0, // v2
+
+            // Triangle 2
+            (-0.9),   0.0 , 0.0, // v3
+            (-0.7),   0.0 , 0.0, // v4
+            (-0.8),   0.2 , 0.0, // v5
+
+            // Triangle 3
+              0.7 ,   0.0 , 0.0, // v6
+              0.9 ,   0.0 , 0.0, // v7
+              0.8 ,   0.2 , 0.0, // v8
+            
+            // Triangle 4
+            (-0.9), (-0.1), 0.0, // v9
+            (-0.8), (-0.3), 0.0, // v10
+            (-0.7), (-0.1), 0.0, // v11
+
+            // Triangle 5
+              0.7 , (-0.1), 0.0, // v12
+              0.8 , (-0.3), 0.0, // v13
+              0.9 , (-0.1), 0.0, // v14
         ];
 
         // * Set up Indices
         let indices: Vec<u32> = vec![
-            0, 1, 2, // Triangle1 (v0, v1, v2)
+            0 , 1 , 2 , // Triangle 1 (v0 , v1 , v2 )
+            3 , 4 , 5 , // Triangle 2 (v3 , v4 , v5 )
+            6 , 7 , 8 , // Triangle 3 (v6 , v7 , v8 )
+            9 , 10, 11, // Triangle 4 (v9 , v10, v11)
+            12, 13, 14, // Triangle 4 (v12, v13, v14)
         ];
 
         // * Set up VAO
-        let my_vao: u32 = unsafe { 
+        let vao_id: u32 = unsafe { 
             create_vao(&vertices, &indices)          
         };
 
@@ -374,17 +388,18 @@ fn main() {
                 gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); // Clear the screen
 
 
-                // * Bind VAO and draw objects
+                // * Draw objects
                 /*
-                 We are binding the whole VAO
-                 Then we draw elements/object on the screen
+                 We draw elements/object on the screen
                  
-                 ! Coment more here
+                 We specify that the element we want to draw is a triangle so that OpenGL can be prepared for drawing triangle primitives
+                 Then we specify the length of the indices array to tell OpenGL how to draw the triangle 
+                 Then de declare the datatype that the indices are using
+                 Then finally we say 0 for the shift in the array of IBO, as we don't have any exotic IBO
                  */
                 unsafe {
                     let indices_array_length: i32 = indices.len() as i32;
 
-                    gl::BindVertexArray(my_vao);
                     gl::DrawElements(
                         gl::TRIANGLES,
                         indices_array_length,
