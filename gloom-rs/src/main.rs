@@ -252,62 +252,87 @@ fn main() {
 
         // * Set up Vertices
         /*
-         Because of teh way simulating objects visually work, the vector becomes an array, ie v_computer=v_on_paper.Transposed
+         Because of the way simulating objects visually work, the vector becomes an array, ie v_computer=v_on_paper.Transposed
          */
-        let vertices: Vec<f32> = vec![
+        let vertices_big_triangle: Vec<f32> = vec![
             // Triangle 1
-            (-0.6), (-0.6), 0.0, // v0
-              0.6 , (-0.6), 0.0, // v1
-              0.0 ,   0.6 , 0.0, // v2
+            (-0.6), (-0.6),   0.0 , // v0
+              0.6 , (-0.6),   0.0 , // v1
+              0.0 ,   0.6 ,   0.0 , // v2
+        ];
+        let vertices_small_triangles: Vec<f32> = vec![
+            // Triangle 1
+            (-0.9),   0.0 ,   0.0 , // v0
+            (-0.7),   0.0 ,   0.0 , // v1
+            (-0.8),   0.2 ,   0.0 , // v2
 
             // Triangle 2
-            (-0.9),   0.0 , 0.0, // v3
-            (-0.7),   0.0 , 0.0, // v4
-            (-0.8),   0.2 , 0.0, // v5
-
-            // Triangle 3
-              0.7 ,   0.0 , 0.0, // v6
-              0.9 ,   0.0 , 0.0, // v7
-              0.8 ,   0.2 , 0.0, // v8
+              0.7 ,   0.0 ,   0.0 , // v3
+              0.9 ,   0.0 ,   0.0 , // v4
+              0.8 ,   0.2 ,   0.0 , // v5
             
-            // Triangle 4
-            (-0.9), (-0.1), 0.0, // v9
-            (-0.8), (-0.3), 0.0, // v10
-            (-0.7), (-0.1), 0.0, // v11
+            // Triangle 3
+            (-0.9), (-0.1),   0.0 , // v6
+            (-0.8), (-0.3),   0.0 , // v7
+            (-0.7), (-0.1),   0.0 , // v8
 
-            // Triangle 5
-              0.7 , (-0.1), 0.0, // v12
-              0.8 , (-0.3), 0.0, // v13
-              0.9 , (-0.1), 0.0, // v14
+            // Triangle 4
+              0.7 , (-0.1),   0.0 , // v9
+              0.8 , (-0.3),   0.0 , // v10
+              0.9 , (-0.1),   0.0 , // v11
         ];
+        // let vertices_test_triangle: Vec<f32> = vec![
+        //     // Triangle 1
+        //       0.6 , (-0.8), (-0.2), // v0
+        //       0.0 ,   0.4 ,   0.0 , // v1
+        //     (-0.8), (-0.2), (-0.2), // v2
+        // ];
 
         // * Set up Indices
-        let indices: Vec<u32> = vec![
+        let indices_big_triangle: Vec<u32> = vec![
+            0 , 1 , 2 , // Triangle 1 (v0 , v1 , v2 )
+        ];
+        let indices_small_triangles: Vec<u32> = vec![
             0 , 1 , 2 , // Triangle 1 (v0 , v1 , v2 )
             3 , 4 , 5 , // Triangle 2 (v3 , v4 , v5 )
             6 , 7 , 8 , // Triangle 3 (v6 , v7 , v8 )
             9 , 10, 11, // Triangle 4 (v9 , v10, v11)
-            12, 13, 14, // Triangle 4 (v12, v13, v14)
         ];
+        // let indices_test_triangle: Vec<u32> = vec![
+        //     2 , 0 , 1 , // Triangle 1 (v2 , v0 , v1 )
+        // ];
 
         // * Set up VAO
-        let vao_id: u32 = unsafe { 
-            create_vao(&vertices, &indices)          
+        let vao_id_big_triangle: u32 = unsafe { 
+            create_vao(&vertices_big_triangle, &indices_big_triangle)          
         };
+        let vao_id_small_triangles: u32 = unsafe { 
+            create_vao(&vertices_small_triangles, &indices_small_triangles)          
+        };
+        // let vao_id_test_triangle: u32 = unsafe { 
+        //     create_vao(&vertices_test_triangle, &indices_test_triangle)          
+        // };
 
 
         // * Load, Compile and Link the shader pair
-        let simple_shader = unsafe {
+        let green_shader = unsafe {
             shader::ShaderBuilder::new()
-            .attach_file("shaders/simple.vert")
-            .attach_file("shaders/simple.frag")
+                .attach_file("shaders/green.vert")
+                .attach_file("shaders/green.frag")
                 .link()
         };
-
-        // * Activate the shader program
-        unsafe {
-            simple_shader.activate();
-        }
+        let cyan_shader = unsafe {
+            shader::ShaderBuilder::new()
+                .attach_file("shaders/cyan.vert")
+                .attach_file("shaders/cyan.frag")
+                .link()
+        };
+        // let blue_shader = unsafe {
+        //     shader::ShaderBuilder::new()
+        //         .attach_file("shaders/blue.vert")
+        //         .attach_file("shaders/blue.frag")
+        //         .link()
+        // };
 
         // Basic usage of shader helper:
         // The example code below creates a 'shader' object.
@@ -381,32 +406,41 @@ fn main() {
 
             // == // Please compute camera transforms here (exercise 2 & 3)
 
-
+            // * Render Objects
             unsafe {
                 // Clear the color and depth buffers
                 gl::ClearColor(0.035, 0.046, 0.078, 1.0); // night sky
                 gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); // Clear the screen
 
+                // * Draw the big triangle
+                green_shader.activate();
+                gl::BindVertexArray(vao_id_big_triangle);
+                gl::DrawElements(
+                    gl::TRIANGLES,
+                    indices_big_triangle.len() as i32,
+                    gl::UNSIGNED_INT,
+                    std::ptr::null()
+                );
 
-                // * Draw objects
-                /*
-                 We draw elements/object on the screen
-                 
-                 We specify that the element we want to draw is a triangle so that OpenGL can be prepared for drawing triangle primitives
-                 Then we specify the length of the indices array to tell OpenGL how to draw the triangle 
-                 Then de declare the datatype that the indices are using
-                 Then finally we say 0 for the shift in the array of IBO, as we don't have any exotic IBO
-                 */
-                unsafe {
-                    let indices_array_length: i32 = indices.len() as i32;
+                // * Draw the small triangles
+                cyan_shader.activate();
+                gl::BindVertexArray(vao_id_small_triangles);
+                gl::DrawElements(
+                    gl::TRIANGLES,
+                    indices_small_triangles.len() as i32,
+                    gl::UNSIGNED_INT,
+                    std::ptr::null()
+                );
 
-                    gl::DrawElements(
-                        gl::TRIANGLES,
-                        indices_array_length,
-                        gl::UNSIGNED_INT,
-                        std::ptr::null()
-                    );
-                }
+                // * Draw the test triangle
+                // blue_shader.activate();
+                // gl::BindVertexArray(vao_id_test_triangle);
+                // gl::DrawElements(
+                //     gl::TRIANGLES,
+                //     indices_test_triangle.len() as i32,
+                //     gl::UNSIGNED_INT,
+                //     std::ptr::null()
+                // );
             }
 
             // Display the new color buffer on the display
