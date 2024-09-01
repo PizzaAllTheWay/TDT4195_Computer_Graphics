@@ -34,6 +34,42 @@ impl Shader {
     pub unsafe fn activate(&self) {
         gl::UseProgram(self.program_id);
     }
+
+    // * Custom method to edit shader color
+    /// The power of ChatGPT and my final brain cell X)
+    /// Sets a vec3 uniform in the shader program.
+    /// 
+    /// # Parameters
+    /// - `name`: The name of the uniform variable in the shader.
+    /// - `value`: A reference to an array of 3 floats representing the vec3 value to be set.
+    ///
+    /// # Safety
+    /// This method is unsafe because it interacts with the raw OpenGL API, which assumes
+    /// that you are passing valid data and operating in a valid OpenGL context.
+    pub unsafe fn set_uniform_vec3(&self, name: &str, value: &[f32; 3]) {
+        // Convert the uniform name from a Rust string to a C-compatible string.
+        // This is necessary because OpenGL functions expect C strings.
+        let name_cstr = CString::new(name).expect("CString::new failed");
+
+        // Get the location of the uniform variable in the shader program.
+        // This location is necessary to update the value of the uniform.
+        let uniform_location = gl::GetUniformLocation(self.program_id, name_cstr.as_ptr());
+
+        // Check if the uniform location is valid (i.e., not -1).
+        // If the location is valid, set the value of the uniform using `glUniform3fv`.
+        if uniform_location != -1 {
+            // `glUniform3fv` is used to set the value of a vec3 uniform variable in the shader.
+            // Parameters:
+            // - uniform_location: The location of the uniform variable.
+            // - 1: The number of vec3 values to set (in this case, just 1).
+            // - value.as_ptr(): A pointer to the array of 3 floats representing the vec3 value.
+            gl::Uniform3fv(uniform_location, 1, value.as_ptr());
+        } else {
+            // If the uniform location is invalid (i.e., the uniform was not found),
+            // print a warning message to the console.
+            println!("Warning: uniform '{}' not found in shader!", name);
+        }
+    }
 }
 
 impl Into<gl::types::GLenum> for ShaderType {

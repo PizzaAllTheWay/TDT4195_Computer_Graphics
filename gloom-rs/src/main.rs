@@ -18,6 +18,10 @@ mod util;
 use glutin::event::{Event, WindowEvent, DeviceEvent, KeyboardInput, ElementState::{Pressed, Released}, VirtualKeyCode::{self, *}};
 use glutin::event_loop::ControlFlow;
 
+// Libraries for extracting data of .obj files
+use tobj;
+use std::path::Path;
+
 // initial window size
 const INITIAL_SCREEN_W: u32 = 800;
 const INITIAL_SCREEN_H: u32 = 600;
@@ -51,12 +55,50 @@ fn offset<T>(n: u32) -> *const c_void {
 // Get a null pointer (equivalent to an offset of 0)
 // ptr::null()
 
+// * Load .obj files to normalized vertices and correct indices
+// Function for loading and extracting .obj file data
+fn load_obj(filename: &str) -> (Vec<f32>, Vec<u32>) {
+    // Set load options to triangulate the mesh
+    let load_options = tobj::LoadOptions {
+        triangulate: true,
+        ..Default::default() // Use the default settings for other options
+    };
+
+    // Load the OBJ file with the specified options
+    let obj = tobj::load_obj(&Path::new(filename), &load_options);
+    let (models, _) = obj.expect("Failed to load OBJ file");
+
+    // Initialize vectors to store vertices and indices
+    let mut vertices = Vec::new();
+    let mut indices = Vec::new();
+
+    // Iterate through the models and normalize the vertices
+    for m in models.iter() {
+        let mesh = &m.mesh;
+
+        // Normalize each vertex and store it
+        for v in mesh.positions.chunks(3) {
+            let vertex = glm::vec3(v[0], v[1], v[2]);
+            let normalized_vertex = glm::normalize(&vertex);
+            vertices.push(normalized_vertex.x);
+            vertices.push(normalized_vertex.y);
+            vertices.push(normalized_vertex.z);
+        }
+
+        // Store the indices
+        for &index in mesh.indices.iter() {
+            indices.push(index);
+        }
+    }
+
+    (vertices, indices)
+}
+
+
 
 // == // Generate your VAO here
+// * Generate VAO (Vertex Array Object)
 unsafe fn create_vao(vertices: &Vec<f32>, indices: &Vec<u32>) -> u32 {
-    // Specify how many objects we want to go into VAO
-    let triangle_count: i32 = (vertices.len()/9) as i32; // Calculates how many triangles were passed into the function
-
     // * Generate a VAO and bind it (Vertex Array Object)
     /*
      Specify VAO ID
@@ -71,7 +113,7 @@ unsafe fn create_vao(vertices: &Vec<f32>, indices: &Vec<u32>) -> u32 {
      Generate VAO, 
      This is where we generate the IDs as well, so it needs to be pointed to in memory
      */
-    gl::GenVertexArrays(triangle_count, &mut vao_id); 
+    gl::GenVertexArrays(1, &mut vao_id); 
     /*
      Bind VAO
      Here we just specify where our VAO ID is located at 
@@ -89,7 +131,7 @@ unsafe fn create_vao(vertices: &Vec<f32>, indices: &Vec<u32>) -> u32 {
      There are other but I have no idea what they do, supposedly better performance and space usage for different data buffer types
      */
     let mut vbo_id: u32 = 0;
-    gl::GenBuffers(triangle_count, &mut vbo_id);
+    gl::GenBuffers(1, &mut vbo_id);
     gl::BindBuffer(gl::ARRAY_BUFFER, vbo_id);
 
     // * Fill it with data
@@ -154,7 +196,7 @@ unsafe fn create_vao(vertices: &Vec<f32>, indices: &Vec<u32>) -> u32 {
 
      This is not necessary with just a single triangle in practice
      However once one starts to create multiple triangles that interconnect, this becomes a crucial step
-     This step ensures and check that all the primitive Triangles are created in the most optimal way with our specifications and uses teh least amount of recourses
+     This step ensures and check that all the primitive Triangles are created in the most optimal way with our specifications and uses teh least amount of resources
      How IBO helps us is for example with 2 Triangles that are sharing the same border, instead of defining this border twice (once per triangle), we can define this border once and link it to bot primitives that share that same border
      This way rendering happens more efficiently and more structured
 
@@ -163,7 +205,7 @@ unsafe fn create_vao(vertices: &Vec<f32>, indices: &Vec<u32>) -> u32 {
      Now instead of Vertexes, we specify for Indices, same process as with VBO
      */
     let mut ibo_id: u32 = 0;
-    gl::GenBuffers(triangle_count, &mut ibo_id);
+    gl::GenBuffers(1, &mut ibo_id);
     gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ibo_id);
 
     // * Fill it with data
@@ -189,6 +231,7 @@ unsafe fn create_vao(vertices: &Vec<f32>, indices: &Vec<u32>) -> u32 {
     // * Return the ID of the VAO
     return vao_id
 }
+
 
 
 fn main() {
@@ -249,6 +292,25 @@ fn main() {
             println!("OpenGL\t: {}", util::get_gl_string(gl::VERSION));
             println!("GLSL\t: {}", util::get_gl_string(gl::SHADING_LANGUAGE_VERSION));
         }
+
+        // * Load Objects
+        // Load the sphere OBJ file
+        let (vertices_sphere, indices_sphere) = load_obj("resources/sphere.obj");
+
+        // Debugging
+        // println!("");println!("");println!("");
+        // println!("==================================================");
+        // println!("Vertices:");
+        // println!("Values: {:?}", vertices_sphere);
+        // println!("==================================================");
+        // println!("");println!("");println!("");
+
+        // println!("");println!("");println!("");
+        // println!("==================================================");
+        // println!("Indices:");
+        // println!("Values: {:?}", indices_sphere);
+        // println!("==================================================");
+        // println!("");println!("");println!("");
 
         // * Set up Vertices
         /*
@@ -312,7 +374,9 @@ fn main() {
         // let vao_id_test_triangle: u32 = unsafe { 
         //     create_vao(&vertices_test_triangle, &indices_test_triangle)          
         // };
-
+        let vao_id_sphere: u32 = unsafe { 
+            create_vao(&vertices_sphere, &indices_sphere)          
+        };
 
         // * Load, Compile and Link the shader pair
         let green_shader = unsafe {
@@ -333,6 +397,12 @@ fn main() {
         //         .attach_file("shaders/blue.frag")
         //         .link()
         // };
+        let sphere_shader = unsafe {
+            shader::ShaderBuilder::new()
+                .attach_file("shaders/sphere.vert")
+                .attach_file("shaders/sphere.frag")
+                .link()
+        };
 
         // Basic usage of shader helper:
         // The example code below creates a 'shader' object.
@@ -441,6 +511,25 @@ fn main() {
                 //     gl::UNSIGNED_INT,
                 //     std::ptr::null()
                 // );
+
+                // * Draw the RGB sphere
+                // Compute a changing color
+                let r = (elapsed * 0.5).sin() * 0.5 + 0.5;
+                let g = (elapsed * 0.7).sin() * 0.5 + 0.5;
+                let b = (elapsed * 0.9).sin() * 0.5 + 0.5;
+
+                // Update shader
+                sphere_shader.activate();
+                sphere_shader.set_uniform_vec3("ChangingColor", &[r, g, b]);
+
+                // Render sphere
+                gl::BindVertexArray(vao_id_sphere);
+                gl::DrawElements(
+                    gl::TRIANGLES,
+                    indices_sphere.len() as i32,
+                    gl::UNSIGNED_INT,
+                    std::ptr::null()
+                );
             }
 
             // Display the new color buffer on the display
