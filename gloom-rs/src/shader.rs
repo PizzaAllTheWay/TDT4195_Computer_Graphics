@@ -70,6 +70,27 @@ impl Shader {
             println!("Warning: uniform '{}' not found in shader!", name);
         }
     }
+
+    // * Custom method to set a float uniform in the shader program
+    /// Sets a float uniform in the shader program.
+    /// 
+    /// # Parameters
+    /// - `name`: The name of the uniform variable in the shader.
+    /// - `value`: The float value to be set.
+    ///
+    /// # Safety
+    /// This method is unsafe because it interacts with the raw OpenGL API, which assumes
+    /// that you are passing valid data and operating in a valid OpenGL context.
+    pub unsafe fn set_uniform_float(&self, name: &str, value: f32) {
+        let name_cstr = CString::new(name).expect("CString::new failed");
+        let uniform_location = gl::GetUniformLocation(self.program_id, name_cstr.as_ptr());
+
+        if uniform_location != -1 {
+            gl::Uniform1f(uniform_location, value);
+        } else {
+            println!("Warning: uniform '{}' not found in shader!", name);
+        }
+    }
 }
 
 impl Into<gl::types::GLenum> for ShaderType {

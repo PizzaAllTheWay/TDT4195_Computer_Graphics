@@ -1,14 +1,13 @@
 // Uncomment these following global attributes to silence most warnings of "low" interest:
-/*
+
 #![allow(dead_code)]
 #![allow(non_snake_case)]
 #![allow(unreachable_code)]
 #![allow(unused_mut)]
 #![allow(unused_unsafe)]
 #![allow(unused_variables)]
-*/
+
 extern crate nalgebra_glm as glm;
-use std::{ mem, ptr, os::raw::c_void };
 use std::thread;
 use std::sync::{Mutex, Arc, RwLock};
 
@@ -18,221 +17,10 @@ mod util;
 use glutin::event::{Event, WindowEvent, DeviceEvent, KeyboardInput, ElementState::{Pressed, Released}, VirtualKeyCode::{self, *}};
 use glutin::event_loop::ControlFlow;
 
-// Libraries for extracting data of .obj files
-use tobj;
-use std::path::Path;
 
 // initial window size
 const INITIAL_SCREEN_W: u32 = 800;
 const INITIAL_SCREEN_H: u32 = 600;
-
-// == // Helper functions to make interacting with OpenGL a little bit prettier. You *WILL* need these! // == //
-
-// Get the size of an arbitrary array of numbers measured in bytes
-// Example usage:  byte_size_of_array(my_array)
-fn byte_size_of_array<T>(val: &[T]) -> isize {
-    std::mem::size_of_val(&val[..]) as isize
-}
-
-// Get the OpenGL-compatible pointer to an arbitrary array of numbers
-// Example usage:  pointer_to_array(my_array)
-fn pointer_to_array<T>(val: &[T]) -> *const c_void {
-    &val[0] as *const T as *const c_void
-}
-
-// Get the size of the given type in bytes
-// Example usage:  size_of::<u64>()
-fn size_of<T>() -> i32 {
-    mem::size_of::<T>() as i32
-}
-
-// Get an offset in bytes for n units of type T, represented as a relative pointer
-// Example usage:  offset::<u64>(4)
-fn offset<T>(n: u32) -> *const c_void {
-    (n * mem::size_of::<T>() as u32) as *const T as *const c_void
-}
-
-// Get a null pointer (equivalent to an offset of 0)
-// ptr::null()
-
-// * Load .obj files to normalized vertices and correct indices
-// Function for loading and extracting .obj file data
-fn load_obj(filename: &str) -> (Vec<f32>, Vec<u32>) {
-    // Set load options to triangulate the mesh
-    let load_options = tobj::LoadOptions {
-        triangulate: true,
-        ..Default::default() // Use the default settings for other options
-    };
-
-    // Load the OBJ file with the specified options
-    let obj = tobj::load_obj(&Path::new(filename), &load_options);
-    let (models, _) = obj.expect("Failed to load OBJ file");
-
-    // Initialize vectors to store vertices and indices
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
-
-    // Iterate through the models and normalize the vertices
-    for m in models.iter() {
-        let mesh = &m.mesh;
-
-        // Normalize each vertex and store it
-        for v in mesh.positions.chunks(3) {
-            let vertex = glm::vec3(v[0], v[1], v[2]);
-            let normalized_vertex = glm::normalize(&vertex);
-            vertices.push(normalized_vertex.x);
-            vertices.push(normalized_vertex.y);
-            vertices.push(normalized_vertex.z);
-        }
-
-        // Store the indices
-        for &index in mesh.indices.iter() {
-            indices.push(index);
-        }
-    }
-
-    (vertices, indices)
-}
-
-
-
-// == // Generate your VAO here
-// * Generate VAO (Vertex Array Object)
-unsafe fn create_vao(vertices: &Vec<f32>, indices: &Vec<u32>) -> u32 {
-    // * Generate a VAO and bind it (Vertex Array Object)
-    /*
-     Specify VAO ID
-     This is how we will interact with our VAO, not directly, but through the ID
-     This is just how OpenGL pipeline is built to be interacted with
-
-     We also make sure to use 32 bit data structures as this is the most common for OpenGL pipeline
-     I don't want to break and debug stuff so we keep everything like that
-     */
-    let mut vao_id: u32 = 0; 
-    /*
-     Generate VAO, 
-     This is where we generate the IDs as well, so it needs to be pointed to in memory
-     */
-    gl::GenVertexArrays(1, &mut vao_id); 
-    /*
-     Bind VAO
-     Here we just specify where our VAO ID is located at 
-     This will allow us later to link VBO to shaders using VAO, as VAO will be bound
-     */
-    gl::BindVertexArray(vao_id);
-
-    // * Generate a VBO and bind it (Vertex Buffer Object)
-    /*
-     This step is very similar to the VAO generation, only with VBO ID instead and binding that
-     
-     Where it differs is the Binding process
-     As the VBO is a buffer that will hold all the data that will go to VAO, we need to specify target type of buffer
-     We are going to be using very basic ARRAY type buffer for all our data storage
-     There are other but I have no idea what they do, supposedly better performance and space usage for different data buffer types
-     */
-    let mut vbo_id: u32 = 0;
-    gl::GenBuffers(1, &mut vbo_id);
-    gl::BindBuffer(gl::ARRAY_BUFFER, vbo_id);
-
-    // * Fill it with data
-    /*
-     Here we fill the VBO with data by calling a function
-     Then we specify data we want to fill teh VBO with
-
-     NOTE: Only 1 VBO ID can be filled at the time, so to fill multiple VBO we need to bind different VBO ID
-
-     We must specify what kind of data the VBO should have, it should be the same as the VBO itself obviously lol
-     Then we specify size of the data we fill VBO with, we specify in BYTES as memory is stored in BYTES (Must remember to say)
-     Then we point to the data we want to fill VBO with, using pointers to pint to the memory location
-     Then finally we will update usage of this VBO data, in our case STATIC_DRAW as we don't change the triangle often if at all 
-     
-     (Many other complex usages here for better performance when rendering, however we stick with basics cuz this is getting confusing for me lol)
-     */
-    gl::BufferData(
-        gl::ARRAY_BUFFER,
-        byte_size_of_array(vertices),
-        pointer_to_array(vertices),
-        gl::STATIC_DRAW
-    );
-
-    // * Configure a VAP for the data and enable it (Vertex Attribute Pointer)
-    /*
-     Here we configure VAP and enabling it by calling a function
-
-     VAP Will specify what type of data in what type of data structure we passed down to VBO
-     VAP Will then specify how shaders should interpret VBO and which vertex shaders it should be associated with 
-     Since we only have triangles this specification should be straight forward 
-     
-     Specify position/index of the vertex attribute in shader program corresponds to the data passing through VBO. Since we only have triangles, this is very generic as there is only 1 Vertex Shader located at "in layout(location=0) vec3 vertex;", ie location = 0
-     Specify number of components per Vertex. Each vertex consists of 3 floats (32 bits) (x, y, z). So that is why 3 
-     Specify data type of each component, generic 32 bit floats as OpenGL likes it jesjes
-     Specify if we want to normalize the data, we don't, that is just cursed unless you ware working with very big and large values at the same time, which we don't
-     Specify Stride: number of bytes between each new vertex (3 32-bit floats per vertex)
-     Specify offset of the first component (should always be 0, otherwise what kind of data structure are we even handling X-X) 
-     
-     Lastly We enable VAP :)
-     */
-    let position_attribute_index: u32 = 0;
-    let number_of_vertexes_per_triangle: i32 = 3;
-    let stride: i32 = number_of_vertexes_per_triangle * size_of::<f32>();
-    gl::VertexAttribPointer(
-        position_attribute_index,
-        number_of_vertexes_per_triangle,
-        gl::FLOAT,
-        gl::FALSE,
-        stride,
-        std::ptr::null()
-    );
-    gl::EnableVertexAttribArray(position_attribute_index); // Array/Pointer, same stuff at the end of the day, just some renaming, still enables VAP
-
-    // * Generate a IBO and bind it (Indices Buffer Object)
-    /*
-     Here we generate IBO and bind it
-
-     Even though we now have Vertex connection to the shaders
-     We need to index these Vertexes and specify how they are connected to each other to make primitives
-     For each of our 3 Vertexes, there must be created a primitive => Triangle per 3 vertexes
-     IBO tells OpenGL how these vertexes are combined to make a primitive
-
-     This is not necessary with just a single triangle in practice
-     However once one starts to create multiple triangles that interconnect, this becomes a crucial step
-     This step ensures and check that all the primitive Triangles are created in the most optimal way with our specifications and uses teh least amount of resources
-     How IBO helps us is for example with 2 Triangles that are sharing the same border, instead of defining this border twice (once per triangle), we can define this border once and link it to bot primitives that share that same border
-     This way rendering happens more efficiently and more structured
-
-     Very similar to VBO, just that now we specify in the command that we want to fill IBO instead
-     ELEMENT_ARRAY_BUFFER is the one responsible for this
-     Now instead of Vertexes, we specify for Indices, same process as with VBO
-     */
-    let mut ibo_id: u32 = 0;
-    gl::GenBuffers(1, &mut ibo_id);
-    gl::BindBuffer(gl::ELEMENT_ARRAY_BUFFER, ibo_id);
-
-    // * Fill it with data
-    /*
-     Here we will the IBO with indices data
-
-     Very similar to VBO
-     However, its a bit more simpler as we don't have to specify indices attributes
-     We only need to put inn the data, the VAP already specified how Vertexes are connected to shaders, and thus indirectly how indices should be connected 
-     This is because indices describe how Vertexes are connected to each other to build a primitive, in our case triangles
-
-     Very similar to VBO, just that now we specify in the command that we want to fill IBO instead
-     ELEMENT_ARRAY_BUFFER is the one responsible for this
-     Now instead of Vertexes, we specify for Indices, same process as with VBO
-    */
-    gl::BufferData(
-        gl::ELEMENT_ARRAY_BUFFER,
-        byte_size_of_array(indices),
-        pointer_to_array(indices),
-        gl::STATIC_DRAW
-    );
-
-    // * Return the ID of the VAO
-    return vao_id
-}
-
-
 
 fn main() {
     // Set up the necessary objects to deal with windows and event handling
@@ -285,7 +73,7 @@ fn main() {
             gl::Enable(gl::BLEND);
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
             gl::Enable(gl::DEBUG_OUTPUT_SYNCHRONOUS);
-            gl::DebugMessageCallback(Some(util::debug_callback), ptr::null());
+            gl::DebugMessageCallback(Some(util::debug_callback), util::null());
 
             // Print some diagnostics
             println!("{}: {}", util::get_gl_string(gl::VENDOR), util::get_gl_string(gl::RENDERER));
@@ -295,130 +83,54 @@ fn main() {
 
         // * Load Objects
         // Load the sphere OBJ file
-        let (vertices_sphere, indices_sphere) = load_obj("resources/sphere.obj");
+        // let (vertices_sphere, indices_sphere) = util::load_obj("resources/sphere.obj");
+        let (vertices_orca, normals_orca, texcoords_orca, indices_orca, color_orca) = util::load_obj("resources/orca.obj");
 
         // Debugging
         // println!("");println!("");println!("");
         // println!("==================================================");
         // println!("Vertices:");
-        // println!("Values: {:?}", vertices_sphere);
+        // println!("Values: {:?}", vertices_orca);
         // println!("==================================================");
         // println!("");println!("");println!("");
 
         // println!("");println!("");println!("");
         // println!("==================================================");
         // println!("Indices:");
-        // println!("Values: {:?}", indices_sphere);
+        // println!("Values: {:?}", indices_orca);
         // println!("==================================================");
         // println!("");println!("");println!("");
 
-        // * Set up Vertices
-        /*
-         Because of the way simulating objects visually work, the vector becomes an array, ie v_computer=v_on_paper.Transposed
-         */
-        let vertices_big_triangle: Vec<f32> = vec![
-            // Triangle 1
-            (-0.6), (-0.6),   0.0 , // v0
-              0.6 , (-0.6),   0.0 , // v1
-              0.0 ,   0.6 ,   0.0 , // v2
-        ];
-        let vertices_small_triangles: Vec<f32> = vec![
-            // Triangle 1
-            (-0.9),   0.0 ,   0.0 , // v0
-            (-0.7),   0.0 ,   0.0 , // v1
-            (-0.8),   0.2 ,   0.0 , // v2
+        // println!("");println!("");println!("");
+        // println!("==================================================");
+        // println!("Normals:");
+        // println!("Values: {:?}", normals_orca);
+        // println!("==================================================");
+        // println!("");println!("");println!("");
 
-            // Triangle 2
-              0.7 ,   0.0 ,   0.0 , // v3
-              0.9 ,   0.0 ,   0.0 , // v4
-              0.8 ,   0.2 ,   0.0 , // v5
-            
-            // Triangle 3
-            (-0.9), (-0.1),   0.0 , // v6
-            (-0.8), (-0.3),   0.0 , // v7
-            (-0.7), (-0.1),   0.0 , // v8
+        // println!("");println!("");println!("");
+        // println!("==================================================");
+        // println!("Collor:");
+        // println!("Values: {:?}", color_orca);
+        // println!("==================================================");
+        // println!("");println!("");println!("");
 
-            // Triangle 4
-              0.7 , (-0.1),   0.0 , // v9
-              0.8 , (-0.3),   0.0 , // v10
-              0.9 , (-0.1),   0.0 , // v11
-        ];
-        // let vertices_test_triangle: Vec<f32> = vec![
-        //     // Triangle 1
-        //       0.6 , (-0.8), (-0.2), // v0
-        //       0.0 ,   0.4 ,   0.0 , // v1
-        //     (-0.8), (-0.2), (-0.2), // v2
-        // ];
-
-        // * Set up Indices
-        let indices_big_triangle: Vec<u32> = vec![
-            0 , 1 , 2 , // Triangle 1 (v0 , v1 , v2 )
-        ];
-        let indices_small_triangles: Vec<u32> = vec![
-            0 , 1 , 2 , // Triangle 1 (v0 , v1 , v2 )
-            3 , 4 , 5 , // Triangle 2 (v3 , v4 , v5 )
-            6 , 7 , 8 , // Triangle 3 (v6 , v7 , v8 )
-            9 , 10, 11, // Triangle 4 (v9 , v10, v11)
-        ];
-        // let indices_test_triangle: Vec<u32> = vec![
-        //     2 , 0 , 1 , // Triangle 1 (v2 , v0 , v1 )
-        // ];
+        // Scale the vertices by 2 and get a new vertex array
+        let vertices_orca_scaled: Vec<f32> = util::scale_vertices(&vertices_orca, 2.0, 2.0, 2.0);
 
         // * Set up VAO
-        let vao_id_big_triangle: u32 = unsafe { 
-            create_vao(&vertices_big_triangle, &indices_big_triangle)          
+        let (vao_id_orca, vbo_id_orca): (u32, u32) = unsafe { 
+            util::create_vao(&vertices_orca_scaled, &indices_orca, &color_orca, &texcoords_orca)          
         };
-        let vao_id_small_triangles: u32 = unsafe { 
-            create_vao(&vertices_small_triangles, &indices_small_triangles)          
-        };
-        // let vao_id_test_triangle: u32 = unsafe { 
-        //     create_vao(&vertices_test_triangle, &indices_test_triangle)          
-        // };
-        let vao_id_sphere: u32 = unsafe { 
-            create_vao(&vertices_sphere, &indices_sphere)          
-        };
+
 
         // * Load, Compile and Link the shader pair
-        let green_shader = unsafe {
+        let orca_shader = unsafe {
             shader::ShaderBuilder::new()
-                .attach_file("shaders/green.vert")
-                .attach_file("shaders/green.frag")
+                .attach_file("shaders/orca.vert")
+                .attach_file("shaders/orca.frag")
                 .link()
         };
-        let cyan_shader = unsafe {
-            shader::ShaderBuilder::new()
-                .attach_file("shaders/cyan.vert")
-                .attach_file("shaders/cyan.frag")
-                .link()
-        };
-        // let blue_shader = unsafe {
-        //     shader::ShaderBuilder::new()
-        //         .attach_file("shaders/blue.vert")
-        //         .attach_file("shaders/blue.frag")
-        //         .link()
-        // };
-        let sphere_shader = unsafe {
-            shader::ShaderBuilder::new()
-                .attach_file("shaders/sphere.vert")
-                .attach_file("shaders/sphere.frag")
-                .link()
-        };
-
-        // Basic usage of shader helper:
-        // The example code below creates a 'shader' object.
-        // It which contains the field `.program_id` and the method `.activate()`.
-        // The `.` in the path is relative to `Cargo.toml`.
-        // This snippet is not enough to do the exercise, and will need to be modified (outside
-        // of just using the correct path), but it only needs to be called once
-
-        /*
-        let simple_shader = unsafe {
-            shader::ShaderBuilder::new()
-                .attach_file("./path/to/simple/shader.file")
-                .link()
-        };
-        */
-
 
         // Used to demonstrate keyboard handling for exercise 2.
         let mut _arbitrary_number = 0.0; // feel free to remove
@@ -427,6 +139,10 @@ fn main() {
         // The main rendering loop
         let first_frame_time = std::time::Instant::now();
         let mut previous_frame_time = first_frame_time;
+
+        // Keep track of the last time rotation was updated
+        let mut last_rotation_update = 0.0;
+
         loop {
             // Compute time passed since the previous frame and since the start of the program
             let now = std::time::Instant::now();
@@ -438,7 +154,7 @@ fn main() {
             if let Ok(mut new_size) = window_size.lock() {
                 if new_size.2 {
                     context.resize(glutin::dpi::PhysicalSize::new(new_size.0, new_size.1));
-                    window_aspect_ratio = new_size.0 as f32 / new_size.1 as f32;
+                    // ! window_aspect_ratio = new_size.0 as f32 / new_size.1 as f32;
                     (*new_size).2 = false;
                     println!("Window was resized to {}x{}", new_size.0, new_size.1);
                     unsafe { gl::Viewport(0, 0, new_size.0 as i32, new_size.1 as i32); }
@@ -482,51 +198,39 @@ fn main() {
                 gl::ClearColor(0.035, 0.046, 0.078, 1.0); // night sky
                 gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); // Clear the screen
 
-                // * Draw the big triangle
-                green_shader.activate();
-                gl::BindVertexArray(vao_id_big_triangle);
-                gl::DrawElements(
-                    gl::TRIANGLES,
-                    indices_big_triangle.len() as i32,
-                    gl::UNSIGNED_INT,
-                    std::ptr::null()
-                );
+                // * Move Orca
+                // Only update the rotation once per second
+                if elapsed - last_rotation_update >= 5.0 {
+                    last_rotation_update = elapsed;
 
-                // * Draw the small triangles
-                cyan_shader.activate();
-                gl::BindVertexArray(vao_id_small_triangles);
-                gl::DrawElements(
-                    gl::TRIANGLES,
-                    indices_small_triangles.len() as i32,
-                    gl::UNSIGNED_INT,
-                    std::ptr::null()
-                );
+                    // Compute rotation
+                    let rotation_x = 0.0;
+                    let rotation_y = (elapsed * 1.0).sin();
+                    let rotation_z = 0.0;
+                    let rotated_vertices = util::rotate_vertices(&vertices_orca, rotation_x, rotation_y, rotation_z);
 
-                // * Draw the test triangle
-                // blue_shader.activate();
-                // gl::BindVertexArray(vao_id_test_triangle);
-                // gl::DrawElements(
-                //     gl::TRIANGLES,
-                //     indices_test_triangle.len() as i32,
-                //     gl::UNSIGNED_INT,
-                //     std::ptr::null()
-                // );
+                    // Update VAO
+                    util::update_vao_with_new_vertices(vao_id_orca, vbo_id_orca, &rotated_vertices);
+                }
 
-                // * Draw the RGB sphere
+                // * Draw the Orca
                 // Compute a changing color
                 let r = (elapsed * 0.5).sin() * 0.5 + 0.5;
                 let g = (elapsed * 0.7).sin() * 0.5 + 0.5;
                 let b = (elapsed * 0.9).sin() * 0.5 + 0.5;
 
-                // Update shader
-                sphere_shader.activate();
-                sphere_shader.set_uniform_vec3("ChangingColor", &[r, g, b]);
+                // Compute changind scale of square patrtrn
+                let checkerboard_scale: f32 = (elapsed * 0.9).sin();
 
-                // Render sphere
-                gl::BindVertexArray(vao_id_sphere);
+                // Update shader
+                orca_shader.activate();
+                orca_shader.set_uniform_vec3("ChangingColor", &[r, g, b]);
+                orca_shader.set_uniform_float("scale", checkerboard_scale);
+
+                gl::BindVertexArray(vao_id_orca);
                 gl::DrawElements(
                     gl::TRIANGLES,
-                    indices_sphere.len() as i32,
+                    indices_orca.len() as i32,
                     gl::UNSIGNED_INT,
                     std::ptr::null()
                 );
