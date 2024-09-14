@@ -53,7 +53,7 @@ fn main() {
     let window_size = Arc::clone(&arc_window_size);
 
     // * Camera variables used in 3D scene to move camera around
-    let mut camera_position = glm::vec3(0.0, 0.0, -1.0);
+    let mut camera_position = glm::vec3(0.0, 0.0, 1.0);
     let camera_speed = 2.0;
     
     let mut camera_yaw: f32 = 0.0;
@@ -203,8 +203,8 @@ fn main() {
 
             // Calculate the camera direction based on the yaw and pitch
             let camera_forward = util::calculate_direction(camera_yaw, camera_pitch);
-            let camera_right = glm::normalize(&glm::cross(&camera_forward, &glm::vec3(0.0, 1.0, 0.0)));
-            let camera_up = glm::normalize(&glm::cross(&camera_right, &camera_forward));
+            let camera_right = glm::normalize(&glm::cross(&glm::vec3(0.0, 1.0, 0.0), &camera_forward));
+            let camera_up = glm::normalize(&glm::cross(&camera_forward, &camera_right));
 
             // Handle resize events
             if let Ok(mut new_size) = window_size.lock() {
@@ -221,10 +221,10 @@ fn main() {
             if let Ok(keys) = pressed_keys.lock() {
                 for key in keys.iter() {
                     let movement_vector: glm::Vec3 = match key {
-                        VirtualKeyCode::W => camera_right * camera_speed * delta_time,     // Move left
-                        VirtualKeyCode::S => -camera_right * camera_speed * delta_time,      // Move right
-                        VirtualKeyCode::A => camera_forward * camera_speed * delta_time,    // Move forward
-                        VirtualKeyCode::D => -camera_forward * camera_speed * delta_time,   // Move backward
+                        VirtualKeyCode::W => camera_forward * camera_speed * delta_time,    // Move forward
+                        VirtualKeyCode::S => -camera_forward * camera_speed * delta_time,   // Move backward
+                        VirtualKeyCode::A => camera_right * camera_speed * delta_time,     // Move left
+                        VirtualKeyCode::D => -camera_right * camera_speed * delta_time,      // Move right
                         _ => glm::vec3(0.0, 0.0, 0.0)
                     };
     
@@ -235,7 +235,7 @@ fn main() {
 
             // Handle mouse movement. delta contains the x and y movement of the mouse since last frame in pixels
             if let Ok(mut delta) = mouse_delta.lock() {
-                camera_pitch += delta.1 * mouse_sensitivity; // Update pitch (vertical)
+                camera_pitch -= delta.1 * mouse_sensitivity; // Update pitch (vertical)
                 camera_yaw += delta.0 * mouse_sensitivity; // Update yaw (horizontal)
 
                 // Clamp the pitch value to avoid excessive rotation
@@ -253,14 +253,20 @@ fn main() {
             let camera_perspective_matrix: glm::Mat4 = glm::perspective(camera_aspect_ratio, 45.0_f32.to_radians(), 1.0, 100.0);
             
             // Calculate camera transformations
-            let camera_pitch_matrix = glm::rotation(camera_pitch, &glm::vec3(1.0, 0.0, 0.0));   // Rotate around local right vector for pitch
-            let camera_yaw_matrix = glm::rotation(camera_yaw, &glm::vec3(0.0, 1.0, 0.0));  // Rotate around global Y-axis for yaw
-            let camera_rotation_matrix = camera_yaw_matrix * camera_pitch_matrix;
+            // Build the view matrix based on the camera position and orientation
+            let camera_rotation_matrix = glm::look_at(
+                &camera_position, 
+                &(camera_position + camera_forward), 
+                &camera_up
+            );
 
-            let camera_translation_matrix: glm::Mat4 = glm::translation(&camera_position);
-
+            // Apply translation so that the object starts in front of the camera
+            let object_translation_matrix: glm::Mat4 = glm::translation(&glm::vec3(1.0, 0.0, 1.0)); // Apply a translation of -1 along the Z-axis to move the objects backward, where we can see it
+            let object_rotation_90: glm::Mat4 = glm::rotation(-std::f32::consts::PI/2.0, &glm::vec3(0.0, 1.0, 0.0)); // Rotate the camera by 90 degrees around the Y-axis degrees
+            let object_transformation = object_translation_matrix * object_rotation_90;
+            
             // Combine the matrices
-            let view_projection_matrix: glm::Mat4 = camera_perspective_matrix * camera_rotation_matrix * camera_translation_matrix;
+            let view_projection_matrix: glm::Mat4 = camera_perspective_matrix * camera_rotation_matrix * object_transformation;
             println!("Position {:?}", camera_position);
             println!("Pitch: {}   | Yaw: {}", camera_pitch, camera_yaw);
 
