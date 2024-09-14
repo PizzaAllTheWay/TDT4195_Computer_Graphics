@@ -14,6 +14,7 @@ use std::sync::{Mutex, Arc, RwLock};
 mod shader;
 mod util;
 
+use glm::scaling;
 use glutin::event::{Event, WindowEvent, DeviceEvent, KeyboardInput, ElementState::{Pressed, Released}, VirtualKeyCode::{self, *}};
 use glutin::event_loop::ControlFlow;
 
@@ -51,6 +52,17 @@ fn main() {
     // Make a reference of this tuple to send to the render thread
     let window_size = Arc::clone(&arc_window_size);
 
+    // * Camera variables used in 3D scene to move camera around
+    let mut camera_position = glm::vec3(0.0, 0.0, -1.0);
+    let camera_speed = 2.0;
+    
+    let mut camera_yaw: f32 = 0.0;
+    let mut camera_pitch: f32 = 0.0;
+    let mouse_sensitivity: f32 = 0.005; // Mouse sensitivity for rotation
+    let mut mouse_right_button_pressed = false;
+
+
+
     // Spawn a separate thread for rendering, so event handling doesn't block rendering
     let render_thread = thread::spawn(move || {
         // Acquire the OpenGL Context and load the function pointers.
@@ -83,52 +95,91 @@ fn main() {
 
         // * Load Objects
         // Load the sphere OBJ file
-        // let (vertices_sphere, indices_sphere) = util::load_obj("resources/sphere.obj");
-        let (vertices_orca, normals_orca, texcoords_orca, indices_orca, color_orca) = util::load_obj("resources/orca.obj");
+        let (vertices_triangle, normals_triangle, texcoords_triangle, indices_triangle) = util::load_obj("resources/equilateral_triangle.obj");
+        // let (vertices_orca, normals_orca, texcoords_orca, indices_orca, color_orca) = util::load_obj("resources/orca.obj");
+        
+        // * Scale the vertices and set them where they should be
+        // Red triangle: smaller and moved to the top-right
+        let mut vertices_triangle_red_modified: Vec<f32> = util::scale_vertices(&vertices_triangle, 0.8, 0.8, 0.8);
+        vertices_triangle_red_modified = util::rotate_vertices(&vertices_triangle_red_modified, 0.0, 0.0, std::f32::consts::PI/2.0);
+        vertices_triangle_red_modified = util::translate_vertices(&vertices_triangle_red_modified, 0.2, 0.2, -0.1);
 
-        // Debugging
-        // println!("");println!("");println!("");
-        // println!("==================================================");
-        // println!("Vertices:");
-        // println!("Values: {:?}", vertices_orca);
-        // println!("==================================================");
-        // println!("");println!("");println!("");
+        // Green triangle: normal size, rotated, and moved to the bottom-left
+        let mut vertices_triangle_green_modified: Vec<f32> = util::scale_vertices(&vertices_triangle, 1.0, 1.0, 1.0);
+        vertices_triangle_green_modified = util::rotate_vertices(&vertices_triangle_green_modified, 0.0, 0.0, -std::f32::consts::PI/7.0);
+        vertices_triangle_green_modified = util::translate_vertices(&vertices_triangle_green_modified, 0.0, -0.4, -0.2);
 
-        // println!("");println!("");println!("");
-        // println!("==================================================");
-        // println!("Indices:");
-        // println!("Values: {:?}", indices_orca);
-        // println!("==================================================");
-        // println!("");println!("");println!("");
+        // Blue triangle: larger and moved to the top-left
+        let mut vertices_triangle_blue_modified: Vec<f32> = util::scale_vertices(&vertices_triangle, 1.5, 1.5, 1.5);
+        vertices_triangle_blue_modified = util::rotate_vertices(&vertices_triangle_blue_modified, 0.0, 0.0, std::f32::consts::PI/5.0);
+        vertices_triangle_blue_modified = util::translate_vertices(&vertices_triangle_blue_modified, -0.2, 0.6, -0.3);
 
-        // println!("");println!("");println!("");
-        // println!("==================================================");
-        // println!("Normals:");
-        // println!("Values: {:?}", normals_orca);
-        // println!("==================================================");
-        // println!("");println!("");println!("");
+        // let vertices_orca_scaled: Vec<f32> = util::scale_vertices(&vertices_orca, 2.0, 2.0, 2.0);
 
-        // println!("");println!("");println!("");
-        // println!("==================================================");
-        // println!("Collor:");
-        // println!("Values: {:?}", color_orca);
-        // println!("==================================================");
-        // println!("");println!("");println!("");
+        // Color buffer with RGBA
+        let color_triangle_red = vec![
+            1.0, 0.0, 0.0, 0.2,  // vertex 1
+            1.0, 0.0, 0.0, 0.2,  // vertex 2
+            1.0, 0.0, 0.0, 0.2   // vertex 3
+        ];
 
-        // Scale the vertices by 2 and get a new vertex array
-        let vertices_orca_scaled: Vec<f32> = util::scale_vertices(&vertices_orca, 2.0, 2.0, 2.0);
+        let color_triangle_green = vec![
+            0.0, 1.0, 0.0, 0.2,  // vertex 1
+            0.0, 1.0, 0.0, 0.2,  // vertex 2
+            0.0, 1.0, 0.0, 0.2   // vertex 3
+        ];
+
+        let color_triangle_blue = vec![
+            0.0, 0.0, 1.0, 0.2,  // vertex 1
+            0.0, 0.0, 1.0, 0.2,  // vertex 2
+            0.0, 0.0, 1.0, 0.2   // vertex 3
+        ];
+
+        // * Concentrate all the data into single big array for VAO to handle
+        // Concatenate vertices, colors, and indices for all three triangles
+        let mut vertices_triangles: Vec<f32> = Vec::new();
+        vertices_triangles.extend(vertices_triangle_red_modified);
+        vertices_triangles.extend(vertices_triangle_green_modified);
+        vertices_triangles.extend(vertices_triangle_blue_modified);
+
+        let mut colors_triangles: Vec<f32> = Vec::new();
+        colors_triangles.extend(color_triangle_red);
+        colors_triangles.extend(color_triangle_green);
+        colors_triangles.extend(color_triangle_blue);
+
+        // Adjust indices for each triangle
+        let mut indices_triangles: Vec<u32> = Vec::new();
+        let indices_red = indices_triangle.clone(); // Indices for the red triangle
+        let indices_green: Vec<u32> = indices_triangle.iter().map(|i| i + 3).collect(); // Shift by 3 for green triangle
+        let indices_blue: Vec<u32> = indices_triangle.iter().map(|i| i + 6).collect(); // Shift by 6 for blue triangle
+
+        indices_triangles.extend(indices_red);
+        indices_triangles.extend(indices_green);
+        indices_triangles.extend(indices_blue);
 
         // * Set up VAO
+        /*
         let (vao_id_orca, vbo_id_orca): (u32, u32) = unsafe { 
             util::create_vao(&vertices_orca_scaled, &indices_orca, &color_orca, &texcoords_orca)          
         };
-
+        */
+        let (vao_id_triangles, vbo_id_triangles): (u32, u32) = unsafe { 
+            util::create_vao(&vertices_triangles, &indices_triangles, &colors_triangles, &texcoords_triangle)          
+        };
 
         // * Load, Compile and Link the shader pair
+        /*
         let orca_shader = unsafe {
             shader::ShaderBuilder::new()
                 .attach_file("shaders/orca.vert")
                 .attach_file("shaders/orca.frag")
+                .link()
+        };
+        */
+        let triangle_shader = unsafe {
+            shader::ShaderBuilder::new()
+                .attach_file("shaders/equilateral_triangle.vert")
+                .attach_file("shaders/equilateral_triangle.frag")
                 .link()
         };
 
@@ -150,6 +201,11 @@ fn main() {
             let delta_time = now.duration_since(previous_frame_time).as_secs_f32();
             previous_frame_time = now;
 
+            // Calculate the camera direction based on the yaw and pitch
+            let camera_forward = util::calculate_direction(camera_yaw, camera_pitch);
+            let camera_right = glm::normalize(&glm::cross(&camera_forward, &glm::vec3(0.0, 1.0, 0.0)));
+            let camera_up = glm::normalize(&glm::cross(&camera_right, &camera_forward));
+
             // Handle resize events
             if let Ok(mut new_size) = window_size.lock() {
                 if new_size.2 {
@@ -164,33 +220,51 @@ fn main() {
             // Handle keyboard input
             if let Ok(keys) = pressed_keys.lock() {
                 for key in keys.iter() {
-                    match key {
-                        // The `VirtualKeyCode` enum is defined here:
-                        //    https://docs.rs/winit/0.25.0/winit/event/enum.VirtualKeyCode.html
-
-                        VirtualKeyCode::A => {
-                            _arbitrary_number += delta_time;
-                        }
-                        VirtualKeyCode::D => {
-                            _arbitrary_number -= delta_time;
-                        }
-
-
-                        // default handler:
-                        _ => { }
-                    }
+                    let movement_vector: glm::Vec3 = match key {
+                        VirtualKeyCode::W => camera_right * camera_speed * delta_time,     // Move left
+                        VirtualKeyCode::S => -camera_right * camera_speed * delta_time,      // Move right
+                        VirtualKeyCode::A => camera_forward * camera_speed * delta_time,    // Move forward
+                        VirtualKeyCode::D => -camera_forward * camera_speed * delta_time,   // Move backward
+                        _ => glm::vec3(0.0, 0.0, 0.0)
+                    };
+    
+                    // Update camera position based on movement
+                    camera_position += movement_vector;
                 }
             }
+
             // Handle mouse movement. delta contains the x and y movement of the mouse since last frame in pixels
             if let Ok(mut delta) = mouse_delta.lock() {
+                camera_pitch += delta.1 * mouse_sensitivity; // Update pitch (vertical)
+                camera_yaw += delta.0 * mouse_sensitivity; // Update yaw (horizontal)
 
-                // == // Optionally access the accumulated mouse movement between
-                // == // frames here with `delta.0` and `delta.1`
+                // Clamp the pitch value to avoid excessive rotation
+                camera_pitch = camera_pitch.clamp(-std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
 
-                *delta = (0.0, 0.0); // reset when done
+                // Reset the mouse delta after applying it
+                *delta = (0.0, 0.0);
             }
 
-            // == // Please compute camera transforms here (exercise 2 & 3)
+
+
+            // * Apply transformations to the world from camera view
+            // Calculate camera perspective
+            let camera_aspect_ratio = window_aspect_ratio;
+            let camera_perspective_matrix: glm::Mat4 = glm::perspective(camera_aspect_ratio, 45.0_f32.to_radians(), 1.0, 100.0);
+            
+            // Calculate camera transformations
+            let camera_pitch_matrix = glm::rotation(camera_pitch, &glm::vec3(1.0, 0.0, 0.0));   // Rotate around local right vector for pitch
+            let camera_yaw_matrix = glm::rotation(camera_yaw, &glm::vec3(0.0, 1.0, 0.0));  // Rotate around global Y-axis for yaw
+            let camera_rotation_matrix = camera_yaw_matrix * camera_pitch_matrix;
+
+            let camera_translation_matrix: glm::Mat4 = glm::translation(&camera_position);
+
+            // Combine the matrices
+            let view_projection_matrix: glm::Mat4 = camera_perspective_matrix * camera_rotation_matrix * camera_translation_matrix;
+            println!("Position {:?}", camera_position);
+            println!("Pitch: {}   | Yaw: {}", camera_pitch, camera_yaw);
+
+
 
             // * Render Objects
             unsafe {
@@ -198,6 +272,34 @@ fn main() {
                 gl::ClearColor(0.035, 0.046, 0.078, 1.0); // night sky
                 gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); // Clear the screen
 
+                // * Move Triangles
+                /*
+                // Compute rotation
+                let rotation_x = 0.0;
+                let speed = 1.0; // Adjust the speed of rotation
+                let mut rotation_y = (elapsed * speed) % (2.0 * std::f32::consts::PI); // Keep it between 0 and 2pi
+                println!("Time: {}", rotation_y);
+                let rotation_z = 0.0;
+                let rotated_vertices = util::rotate_vertices(&vertices_triangles, rotation_x, rotation_y, rotation_z);
+                // Update VAO
+                util::update_vao_with_new_vertices(vao_id_triangles, vbo_id_triangles, &rotated_vertices);
+                */
+
+                // * Render Triangles
+                triangle_shader.activate();
+                triangle_shader.set_uniform_mat4("viewProjectionMatrix", &view_projection_matrix);
+
+                gl::BindVertexArray(vao_id_triangles);
+                gl::DrawElements(
+                    gl::TRIANGLES,
+                    indices_triangles.len() as i32,
+                    gl::UNSIGNED_INT,
+                    std::ptr::null()
+                );
+
+
+
+                /*
                 // * Move Orca
                 // Only update the rotation once per second
                 if elapsed - last_rotation_update >= 5.0 {
@@ -234,6 +336,7 @@ fn main() {
                     gl::UNSIGNED_INT,
                     std::ptr::null()
                 );
+                */
             }
 
             // Display the new color buffer on the display
@@ -307,10 +410,30 @@ fn main() {
                     _      => { }
                 }
             }
+            // Handle mouse button events (right click for rotation)
+            Event::WindowEvent { event: WindowEvent::MouseInput { button, state, .. }, .. } => {
+                if button == glutin::event::MouseButton::Right {
+                    if state == Pressed {
+                        mouse_right_button_pressed = true;
+                    } else {
+                        mouse_right_button_pressed = false;
+                    }
+                }
+            }
+            // Handle mouse movement events
             Event::DeviceEvent { event: DeviceEvent::MouseMotion { delta }, .. } => {
                 // Accumulate mouse movement
-                if let Ok(mut position) = arc_mouse_delta.lock() {
-                    *position = (position.0 + delta.0 as f32, position.1 + delta.1 as f32);
+                // if let Ok(mut position) = arc_mouse_delta.lock() {
+                //     *position = (position.0 + delta.0 as f32, position.1 + delta.1 as f32);
+                // }
+
+                // Only accumulate movement when right mouse button is pressed
+                if mouse_right_button_pressed {  
+                    if let Ok(mut mouse_delta) = arc_mouse_delta.lock() {
+                        // Accumulate mouse movement for pitch and yaw
+                        mouse_delta.0 += delta.0 as f32;
+                        mouse_delta.1 += delta.1 as f32;
+                    }
                 }
             }
             _ => { }

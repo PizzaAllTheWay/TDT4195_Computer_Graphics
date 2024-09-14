@@ -91,6 +91,19 @@ impl Shader {
             println!("Warning: uniform '{}' not found in shader!", name);
         }
     }
+
+    // * Custom method to set a mat4 uniform in the shader program
+    pub unsafe fn set_uniform_mat4(&self, name: &str, matrix: &glm::Mat4) {
+        let name_cstr = CString::new(name).expect("CString::new failed");
+        let uniform_location = gl::GetUniformLocation(self.program_id, name_cstr.as_ptr());
+
+        if uniform_location != -1 {
+            // Sets the matrix in the shader
+            gl::UniformMatrix4fv(uniform_location, 1, gl::FALSE, matrix.as_ptr());
+        } else {
+            println!("Warning: uniform '{}' not found in shader!", name);
+        }
+    }
 }
 
 impl Into<gl::types::GLenum> for ShaderType {

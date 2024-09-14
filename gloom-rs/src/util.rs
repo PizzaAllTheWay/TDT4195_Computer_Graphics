@@ -61,46 +61,7 @@ pub fn null() -> *const c_void {
 }
 
 // * Load .obj files to normalized vertices and correct indices
-// Function for loading and extracting .obj file data
-// fn load_obj(filename: &str) -> (Vec<f32>, Vec<u32>) {
-//     // Set load options to triangulate the mesh
-//     let load_options = tobj::LoadOptions {
-//         triangulate: true,
-//         ..Default::default() // Use the default settings for other options
-//     };
-
-//     // Load the OBJ file with the specified options
-//     let obj = tobj::load_obj(&Path::new(filename), &load_options);
-//     let (models, _) = obj.expect("Failed to load OBJ file");
-
-//     // Initialize vectors to store vertices and indices
-//     let mut vertices = Vec::new();
-//     let mut indices = Vec::new();
-
-//     // Iterate through the models and normalize the vertices
-//     for m in models.iter() {
-//         let mesh = &m.mesh;
-
-//         // Normalize each vertex and store it
-//         for v in mesh.positions.chunks(3) {
-//             let vertex = glm::vec3(v[0], v[1], v[2]);
-//             let normalized_vertex = glm::normalize(&vertex);
-//             vertices.push(normalized_vertex.x);
-//             vertices.push(normalized_vertex.y);
-//             vertices.push(normalized_vertex.z);
-//         }
-
-//         // Store the indices
-//         for &index in mesh.indices.iter() {
-//             indices.push(index);
-//         }
-//     }
-
-//     (vertices, indices)
-// }
-
-
-pub fn load_obj(filename: &str) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<u32>, Vec<f32>) {
+pub fn load_obj(filename: &str) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<u32>) {
     // Set load options to triangulate the mesh
     let load_options = tobj::LoadOptions {
         triangulate: true,
@@ -112,12 +73,11 @@ pub fn load_obj(filename: &str) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<u32>, Vec<
     
     let (models, _) = obj.expect("Failed to load OBJ file");
 
-    // Initialize vectors to store vertices, normals, texture coordinates, indices, and colors
+    // Initialize vectors to store vertices, normals, texture coordinates, and indices
     let mut vertices = Vec::new();
     let mut normals = Vec::new();
     let mut texcoords = Vec::new();
     let mut indices = Vec::new();
-    let mut colors = Vec::new();
 
     // Iterate through the models and store the data
     for m in models.iter() {
@@ -144,22 +104,11 @@ pub fn load_obj(filename: &str) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<u32>, Vec<
 
         // Store indices
         indices.extend_from_slice(&mesh.indices);
-
-        // Store vertex colors if they exist
-        if !mesh.vertex_color.is_empty() {
-            colors.extend_from_slice(&mesh.vertex_color);
-        } else {
-            // Optionally, assign a default color (e.g., white) if color data is not available
-            for _ in 0..(vertices.len() / 3) {
-                colors.push(1.0); // R
-                colors.push(1.0); // G
-                colors.push(1.0); // B
-            }
-        }
     }
 
-    (vertices, normals, texcoords, indices, colors)
+    (vertices, normals, texcoords, indices)
 }
+
 
 
 
@@ -261,15 +210,17 @@ pub unsafe fn create_vao(
      Here we generate a second VBO, this time for the vertex colors.
      The process is identical to generating the VBO for vertices.
      */
-    let mut vbo_id_color: u32 = 0;
-    gl::GenBuffers(1, &mut vbo_id_color);
-    gl::BindBuffer(gl::ARRAY_BUFFER, vbo_id_color);
-    gl::BufferData(
-        gl::ARRAY_BUFFER,
-        byte_size_of_array(colors),
-        pointer_to_array(colors),
-        gl::STATIC_DRAW,
-    );
+    if !colors.is_empty() {
+        let mut vbo_id_color: u32 = 0;
+        gl::GenBuffers(1, &mut vbo_id_color);
+        gl::BindBuffer(gl::ARRAY_BUFFER, vbo_id_color);
+        gl::BufferData(
+            gl::ARRAY_BUFFER,
+            byte_size_of_array(colors),
+            pointer_to_array(colors),
+            gl::STATIC_DRAW,
+        );
+    }
 
     // * Configure a VAP for the color data and enable it
     /*
@@ -285,39 +236,47 @@ pub unsafe fn create_vao(
      
      Lastly We enable VAP :)
      */
-    let color_attribute_index: u32 = 1;
-    gl::VertexAttribPointer(
-        color_attribute_index,
-        3,
-        gl::FLOAT,
-        gl::FALSE,
-        3 * size_of::<f32>(),
-        std::ptr::null(),
-    );
-    gl::EnableVertexAttribArray(color_attribute_index);
+    if !colors.is_empty() {
+        let color_attribute_index: u32 = 1;
+        let color_components_per_vertex = if colors.len() % 4 == 0 { 4 } else { 3 }; // Directly check if RGBA or RGB
+
+        gl::VertexAttribPointer(
+            color_attribute_index,
+            color_components_per_vertex,
+            gl::FLOAT,
+            gl::FALSE,
+            color_components_per_vertex * size_of::<f32>(),
+            std::ptr::null(),
+        );
+        gl::EnableVertexAttribArray(color_attribute_index);
+    }
 
     // * Generate a VBO and bind it (Vertex Buffer Object) for texture coordinates
-    let mut vbo_id_texcoords: u32 = 0;
-    gl::GenBuffers(1, &mut vbo_id_texcoords);
-    gl::BindBuffer(gl::ARRAY_BUFFER, vbo_id_texcoords);
-    gl::BufferData(
-        gl::ARRAY_BUFFER,
-        byte_size_of_array(texcoords),
-        pointer_to_array(texcoords),
-        gl::STATIC_DRAW,
-    );
+    if !texcoords.is_empty() {
+        let mut vbo_id_texcoords: u32 = 0;
+        gl::GenBuffers(1, &mut vbo_id_texcoords);
+        gl::BindBuffer(gl::ARRAY_BUFFER, vbo_id_texcoords);
+        gl::BufferData(
+            gl::ARRAY_BUFFER,
+            byte_size_of_array(texcoords),
+            pointer_to_array(texcoords),
+            gl::STATIC_DRAW,
+        );
+    }
 
     // * Configure a VAP for the texture coordinates and enable it
-    let texcoord_attribute_index: u32 = 2; // Assuming this is at location 2 in your shader
-    gl::VertexAttribPointer(
-        texcoord_attribute_index,
-        2,  // Texture coordinates have 2 components (u, v)
-        gl::FLOAT,
-        gl::FALSE,
-        2 * size_of::<f32>(),
-        std::ptr::null(),
-    );
-    gl::EnableVertexAttribArray(texcoord_attribute_index);
+    if !texcoords.is_empty() {
+        let texcoord_attribute_index: u32 = 2; // Assuming this is at location 2 in your shader
+        gl::VertexAttribPointer(
+            texcoord_attribute_index,
+            2,  // Texture coordinates have 2 components (u, v)
+            gl::FLOAT,
+            gl::FALSE,
+            2 * size_of::<f32>(),
+            std::ptr::null(),
+        );
+        gl::EnableVertexAttribArray(texcoord_attribute_index);
+    }
 
     // * Generate a IBO and bind it (Indices Buffer Object)
     /*
@@ -385,6 +344,7 @@ pub unsafe fn update_vao_with_new_vertices(vao_id: u32, vertex_buffer_id: u32, v
     // 4. Unbind the VAO to prevent accidental modification
     gl::BindVertexArray(0);
 }
+
 
 
 // * Scaling Transform
@@ -467,4 +427,69 @@ pub fn rotate_vertices(
     // Return the new array of rotated vertices
     rotated_vertices
 }
+
+// * Translation Transformation
+/// Function to calculate a translation matrix
+pub fn translation_matrix(translate_x: f32, translate_y: f32, translate_z: f32) -> glm::Mat4 {
+    glm::translation(&glm::vec3(translate_x, translate_y, translate_z))
+}
+
+/// Function to apply a translation to an array of vertices.
+/// - `vertices`: The input array of vertex positions.
+/// - `translate_x`: Translation along the X-axis.
+/// - `translate_y`: Translation along the Y-axis.
+/// - `translate_z`: Translation along the Z-axis.
+/// Returns a new array of translated vertices.
+pub fn translate_vertices(
+    vertices: &Vec<f32>,
+    translate_x: f32,
+    translate_y: f32,
+    translate_z: f32
+) -> Vec<f32> {
+    // Create a translation matrix
+    let translation_matrix = translation_matrix(translate_x, translate_y, translate_z);
+
+    // Create a new vector to store the translated vertices
+    let mut translated_vertices: Vec<f32> = Vec::with_capacity(vertices.len());
+
+    // Iterate through each vertex and apply the translation
+    for i in 0..(vertices.len() / 3) {
+        // Create a vec4 from the vertex position, with w = 1 for homogeneous coordinates
+        let vertex = glm::vec4(vertices[3 * i], vertices[3 * i + 1], vertices[3 * i + 2], 1.0);
+
+        // Apply the translation transformation
+        let translated_vertex = translation_matrix * vertex;
+
+        // Store the translated vertex into the new vector
+        translated_vertices.push(translated_vertex.x);
+        translated_vertices.push(translated_vertex.y);
+        translated_vertices.push(translated_vertex.z);
+    }
+
+    translated_vertices
+}
+
+
+// * For calculating direction of camera 
+// So that WASD responds to camera movement
+// This means even if we are 180*, ie backwards, when we press W (froward)
+// Without this function => We would go backwards
+// With this function, camera view knows we are back so it takes this into account when transforming 
+// Meaning we will move forward as intended
+pub fn calculate_direction(yaw: f32, pitch: f32) -> glm::Vec3 {
+    glm::vec3(
+        yaw.cos() * pitch.cos(),
+        pitch.sin(),
+        yaw.sin() * pitch.cos(),
+    )
+}
+
+pub fn calculate_right_vector(yaw: f32) -> glm::Vec3 {
+    glm::vec3(yaw.sin(), 0.0, -yaw.cos()).normalize()
+}
+
+pub fn calculate_up_vector(forward: glm::Vec3, right: glm::Vec3) -> glm::Vec3 {
+    glm::cross(&right, &forward).normalize()
+}
+
 
