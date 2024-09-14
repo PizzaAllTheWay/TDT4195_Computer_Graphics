@@ -221,10 +221,12 @@ fn main() {
             if let Ok(keys) = pressed_keys.lock() {
                 for key in keys.iter() {
                     let movement_vector: glm::Vec3 = match key {
-                        VirtualKeyCode::W => camera_forward * camera_speed * delta_time,    // Move forward
-                        VirtualKeyCode::S => -camera_forward * camera_speed * delta_time,   // Move backward
-                        VirtualKeyCode::A => camera_right * camera_speed * delta_time,     // Move left
+                        VirtualKeyCode::W => camera_forward * camera_speed * delta_time,     // Move forward
+                        VirtualKeyCode::S => -camera_forward * camera_speed * delta_time,    // Move backward
+                        VirtualKeyCode::A => camera_right * camera_speed * delta_time,       // Move left
                         VirtualKeyCode::D => -camera_right * camera_speed * delta_time,      // Move right
+                        VirtualKeyCode::Space => camera_up * camera_speed * delta_time,      // Move up
+                        VirtualKeyCode::LShift => -camera_up * camera_speed * delta_time,    // Move down
                         _ => glm::vec3(0.0, 0.0, 0.0)
                     };
     
@@ -267,8 +269,6 @@ fn main() {
             
             // Combine the matrices
             let view_projection_matrix: glm::Mat4 = camera_perspective_matrix * camera_rotation_matrix * object_transformation;
-            println!("Position {:?}", camera_position);
-            println!("Pitch: {}   | Yaw: {}", camera_pitch, camera_yaw);
 
 
 
