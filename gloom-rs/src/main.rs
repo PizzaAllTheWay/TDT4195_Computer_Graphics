@@ -100,7 +100,7 @@ fn main() {
         // Load square model
         let (vertices_square, normals_square, texcoords_square, indices_square) = util::load_obj("resources/square.obj");
 
-        // * Color buffer creation
+        // * Create data structure for Orca
         // Since many vertices in the orca model, set up an initial color buffer
         // NOTE: The Orca object is rendered with a dynamic RGB color matrix later on. 
         // The values here represent the base RGB percentages, which will be scaled by the shader's color transformation.
@@ -111,25 +111,46 @@ fn main() {
             color_orca.extend_from_slice(&[0.3, 0.6, 1.0, 0.5]);
         }
 
-        // Add color to square
-        let mut color_square: Vec<f32> = Vec::new();
-        for _ in 0..indices_square.len() {
-            // Append color for each vertex
-            color_square.extend_from_slice(&[1.0, 0.0, 1.0, 0.8]);
-        }
-
         // * Create data structure for particle effects
-        // Concatenate vertices, colors, and indices for all particles
+        // Number of particles for the effect
+        let num_particles: usize = 1000;
+
+        // Initialize arrays for particle data
         let mut vertices_particles: Vec<f32> = Vec::new();
-        vertices_particles.extend(vertices_square);
-
         let mut colors_particles: Vec<f32> = Vec::new();
-        colors_particles.extend(color_square);
-
-        // Adjust indices for each particle
         let mut indices_particles: Vec<u32> = Vec::new();
-        let indices_particle1 = indices_square.clone();
-        indices_particles.extend(indices_particle1);
+
+        // Generate random particle positions and colors based on elapsed time as a seed
+        for i in 0..num_particles {
+            let random_x = util::random_float_in_range(-200.0, 200.0);
+            let random_y = util::random_float_in_range(-200.0, 200.0);
+            let random_z = util::random_float_in_range(-200.0, 200.0);
+
+            // Randomly generate particle positions
+            let particle_position = glm::vec3(random_x, random_y, random_z);
+
+            // Translate vertices for each particle to a random position
+            let translated_vertices = util::translate_vertices(&vertices_square, particle_position.x, particle_position.y, particle_position.z);
+            
+            // Append the translated vertices to the particle arrays
+            vertices_particles.extend(translated_vertices);
+
+            // Generate random color for each vertex (RGB with alpha 0.8)
+            let random_r = util::random_float_in_range(0.40, 1.0);  // Random red value
+            let random_g = util::random_float_in_range(0.01, 0.3);  // Random green value
+            let random_b = util::random_float_in_range(0.50, 1.0);  // Random blue value
+
+            // Each vertex of the square gets the same random color
+            for _ in 0..(indices_square.len()) {
+                colors_particles.extend_from_slice(&[random_r, random_g, random_b, 0.8]); // Random color with alpha
+            }
+
+            // Adjust indices for each particle
+            let offset = (vertices_square.len() / 3 * i) as u32;
+            for &index in indices_square.iter() {
+                indices_particles.push(index + offset);
+            }
+        }
 
 
 
@@ -279,10 +300,10 @@ fn main() {
             let rgb_vec = glm::vec4(r, g, b, a);
             let changing_color_matrix_particles = glm::diagonal4x4(&rgb_vec);
 
-            // Define Orca's parameters
+            // Define Particles parameters
             // Semi random motion slow motion in 3D space
             let particles_position = glm::vec3(
-                0.0123 * (elapsed * 0.13).sin() + 1.0,
+                0.0123 * (elapsed * 0.13).sin() + 5.0,
                 0.0456 * (elapsed * 0.07).sin() + 0.0,
                 0.0789 * (elapsed * 0.74).sin() + 0.0
             );
@@ -294,9 +315,9 @@ fn main() {
             );
 
             let particles_scale = glm::vec3(
-                0.1,
-                0.1,
-                0.1
+                0.02,
+                0.02,
+                0.02
             );
 
             // Call the generalized transformation function for billboard transformation

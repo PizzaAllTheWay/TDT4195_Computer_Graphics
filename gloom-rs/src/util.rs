@@ -1,6 +1,7 @@
 use std::{ffi::CString, mem, os::raw::c_void, path::Path};
 use glm::angle;
 use libc;
+use rand::prelude::*;
 
 pub unsafe fn get_gl_string(name: gl::types::GLenum) -> String {
     std::ffi::CStr::from_ptr(gl::GetString(name) as *mut libc::c_char).to_string_lossy().to_string()
@@ -641,6 +642,16 @@ pub fn calculate_transformation_billboard(
     
     // Return
     return view_projection_matrix_billboard;
+}
+
+
+
+
+// * Random float generator
+pub fn random_float_in_range(min: f32, max: f32) -> f32 {
+    let mut rng = rand::thread_rng();
+    let range = max - min;
+    rng.gen::<f32>() * range + min
 }
 
 
