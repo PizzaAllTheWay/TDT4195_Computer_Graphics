@@ -68,10 +68,11 @@ pub fn load_obj(filename: &str) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<u32>) {
         ..Default::default() // Use the default settings for other options
     };
 
-    // Load the OBJ file with the specified options
-    let obj = tobj::load_obj(&Path::new(filename), &load_options);
+    // Load the OBJ file with the specified options, and print more detailed error info
+    let obj = tobj::load_obj(&Path::new(filename), &load_options)
+        .unwrap_or_else(|e| panic!("Failed to load OBJ file: {:?}", e));
     
-    let (models, _) = obj.expect("Failed to load OBJ file");
+    let (models, _) = obj;
 
     // Initialize vectors to store vertices, normals, texture coordinates, and indices
     let mut vertices = Vec::new();

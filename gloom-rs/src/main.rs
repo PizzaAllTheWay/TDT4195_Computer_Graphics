@@ -34,8 +34,8 @@ fn main() {
         .with_vsync(true);
     let windowed_context = cb.build_windowed(wb, &el).unwrap();
     // Uncomment these if you want to use the mouse for controls, but want it to be confined to the screen and/or invisible.
-    // windowed_context.window().set_cursor_grab(true).expect("failed to grab cursor");
-    // windowed_context.window().set_cursor_visible(false);
+    //windowed_context.window().set_cursor_grab(true).expect("failed to grab cursor");
+    //windowed_context.window().set_cursor_visible(false);
 
     // Set up a shared vector for keeping track of currently pressed keys
     let arc_pressed_keys = Arc::new(Mutex::new(Vec::<VirtualKeyCode>::with_capacity(10)));
@@ -94,98 +94,70 @@ fn main() {
         }
 
         // * Load Objects
-        // Load the sphere OBJ file
-        let (vertices_triangle, normals_triangle, texcoords_triangle, indices_triangle) = util::load_obj("resources/equilateral_triangle.obj");
-        // let (vertices_orca, normals_orca, texcoords_orca, indices_orca, color_orca) = util::load_obj("resources/orca.obj");
+        // Load Orca model
+        let (vertices_orca, normals_orca, texcoords_orca, indices_orca) = util::load_obj("resources/orca.obj");
         
-        // * Scale the vertices and set them where they should be
-        // Red triangle: smaller and moved to the top-right
-        let mut vertices_triangle_red_modified: Vec<f32> = util::scale_vertices(&vertices_triangle, 0.8, 0.8, 0.8);
-        vertices_triangle_red_modified = util::rotate_vertices(&vertices_triangle_red_modified, 0.0, 0.0, std::f32::consts::PI/2.0);
-        vertices_triangle_red_modified = util::translate_vertices(&vertices_triangle_red_modified, 0.2, 0.2, -0.1);
+        // Load square model
+        let (vertices_square, normals_square, texcoords_square, indices_square) = util::load_obj("resources/square.obj");
 
-        // Green triangle: normal size, rotated, and moved to the bottom-left
-        let mut vertices_triangle_green_modified: Vec<f32> = util::scale_vertices(&vertices_triangle, 1.0, 1.0, 1.0);
-        vertices_triangle_green_modified = util::rotate_vertices(&vertices_triangle_green_modified, 0.0, 0.0, -std::f32::consts::PI/7.0);
-        vertices_triangle_green_modified = util::translate_vertices(&vertices_triangle_green_modified, 0.0, -0.4, -0.2);
+        // * Color buffer creation
+        // Since many vertices in the orca model, set up an initial color buffer
+        // NOTE: The Orca object is rendered with a dynamic RGB color matrix later on. 
+        // The values here represent the base RGB percentages, which will be scaled by the shader's color transformation.
+        // Each vertex is assigned a base color (in this case, a shade of blue with partial transparency).
+        let mut color_orca: Vec<f32> = Vec::new();
+        for _ in 0..indices_orca.len() {
+            // Append color for each vertex
+            color_orca.extend_from_slice(&[0.3, 0.6, 1.0, 0.5]);
+        }
 
-        // Blue triangle: larger and moved to the top-left
-        let mut vertices_triangle_blue_modified: Vec<f32> = util::scale_vertices(&vertices_triangle, 1.5, 1.5, 1.5);
-        vertices_triangle_blue_modified = util::rotate_vertices(&vertices_triangle_blue_modified, 0.0, 0.0, std::f32::consts::PI/5.0);
-        vertices_triangle_blue_modified = util::translate_vertices(&vertices_triangle_blue_modified, -0.2, 0.6, -0.3);
+        // Add color to square
+        let mut color_square: Vec<f32> = Vec::new();
+        for _ in 0..indices_square.len() {
+            // Append color for each vertex
+            color_square.extend_from_slice(&[1.0, 0.0, 1.0, 0.8]);
+        }
 
-        // let vertices_orca_scaled: Vec<f32> = util::scale_vertices(&vertices_orca, 2.0, 2.0, 2.0);
+        // * Create data structure for particle effects
+        // Concatenate vertices, colors, and indices for all particles
+        let mut vertices_particles: Vec<f32> = Vec::new();
+        vertices_particles.extend(vertices_square);
 
-        // Color buffer with RGBA
-        let color_triangle_red = vec![
-            1.0, 0.0, 0.0, 0.2,  // vertex 1
-            1.0, 0.0, 0.0, 0.2,  // vertex 2
-            1.0, 0.0, 0.0, 0.2   // vertex 3
-        ];
+        let mut colors_particles: Vec<f32> = Vec::new();
+        colors_particles.extend(color_square);
 
-        let color_triangle_green = vec![
-            0.0, 1.0, 0.0, 0.2,  // vertex 1
-            0.0, 1.0, 0.0, 0.2,  // vertex 2
-            0.0, 1.0, 0.0, 0.2   // vertex 3
-        ];
+        // Adjust indices for each particle
+        let mut indices_particles: Vec<u32> = Vec::new();
+        let indices_particle1 = indices_square.clone();
+        indices_particles.extend(indices_particle1);
 
-        let color_triangle_blue = vec![
-            0.0, 0.0, 1.0, 0.2,  // vertex 1
-            0.0, 0.0, 1.0, 0.2,  // vertex 2
-            0.0, 0.0, 1.0, 0.2   // vertex 3
-        ];
 
-        // * Concentrate all the data into single big array for VAO to handle
-        // Concatenate vertices, colors, and indices for all three triangles
-        let mut vertices_triangles: Vec<f32> = Vec::new();
-        vertices_triangles.extend(vertices_triangle_red_modified);
-        vertices_triangles.extend(vertices_triangle_green_modified);
-        vertices_triangles.extend(vertices_triangle_blue_modified);
-
-        let mut colors_triangles: Vec<f32> = Vec::new();
-        colors_triangles.extend(color_triangle_red);
-        colors_triangles.extend(color_triangle_green);
-        colors_triangles.extend(color_triangle_blue);
-
-        // Adjust indices for each triangle
-        let mut indices_triangles: Vec<u32> = Vec::new();
-        let indices_red = indices_triangle.clone(); // Indices for the red triangle
-        let indices_green: Vec<u32> = indices_triangle.iter().map(|i| i + 3).collect(); // Shift by 3 for green triangle
-        let indices_blue: Vec<u32> = indices_triangle.iter().map(|i| i + 6).collect(); // Shift by 6 for blue triangle
-
-        indices_triangles.extend(indices_red);
-        indices_triangles.extend(indices_green);
-        indices_triangles.extend(indices_blue);
 
         // * Set up VAO
-        /*
         let (vao_id_orca, vbo_id_orca): (u32, u32) = unsafe { 
-            util::create_vao(&vertices_orca_scaled, &indices_orca, &color_orca, &texcoords_orca)          
-        };
-        */
-        let (vao_id_triangles, vbo_id_triangles): (u32, u32) = unsafe { 
-            util::create_vao(&vertices_triangles, &indices_triangles, &colors_triangles, &texcoords_triangle)          
+            util::create_vao(&vertices_orca, &indices_orca, &color_orca, &texcoords_orca)          
         };
 
+        let (vao_id_particles, vbo_id_particles): (u32, u32) = unsafe { 
+            util::create_vao(&vertices_particles, &indices_particles, &colors_particles, &texcoords_square)          
+        };
+
+
+
         // * Load, Compile and Link the shader pair
-        /*
-        let orca_shader = unsafe {
+        let shader_orca = unsafe {
             shader::ShaderBuilder::new()
                 .attach_file("shaders/orca.vert")
                 .attach_file("shaders/orca.frag")
                 .link()
         };
-        */
-        let triangle_shader = unsafe {
+
+        let shader_particles = unsafe {
             shader::ShaderBuilder::new()
-                .attach_file("shaders/equilateral_triangle.vert")
-                .attach_file("shaders/equilateral_triangle.frag")
+                .attach_file("shaders/particles.vert")
+                .attach_file("shaders/particles.frag")
                 .link()
         };
-
-        // Used to demonstrate keyboard handling for exercise 2.
-        let mut _arbitrary_number = 0.0; // feel free to remove
-
 
         // The main rendering loop
         let first_frame_time = std::time::Instant::now();
@@ -262,13 +234,138 @@ fn main() {
                 &camera_up
             );
 
-            // Apply translation so that the object starts in front of the camera
-            let object_translation_matrix: glm::Mat4 = glm::translation(&glm::vec3(1.0, 0.0, 1.0)); // Apply a translation of -1 along the Z-axis to move the objects backward, where we can see it
-            let object_rotation_90: glm::Mat4 = glm::rotation(-std::f32::consts::PI/2.0, &glm::vec3(0.0, 1.0, 0.0)); // Rotate the camera by 90 degrees around the Y-axis degrees
-            let object_transformation = object_translation_matrix * object_rotation_90;
-            
             // Combine the matrices
-            let view_projection_matrix: glm::Mat4 = camera_perspective_matrix * camera_rotation_matrix * object_transformation;
+            let view_projection_matrix: glm::Mat4 = camera_perspective_matrix * camera_rotation_matrix;
+
+            // * Animate RGB changing color Orca while its spinning and going up and down 
+            // Change RGB colors
+            let r: f32 = (elapsed * 0.5).sin() * 0.5 + 0.5;
+            let g: f32 = (elapsed * 0.7).sin() * 0.5 + 0.5;
+            let b: f32 = (elapsed * 0.9).sin() * 0.5 + 0.5;
+            let a: f32 = 1.0;
+
+            // Create a diagonal 4x4 RGBA matrix for scaling
+            let rgb_vec = glm::vec4(r, g, b, a);
+            let changing_color_matrix_orca = glm::diagonal4x4(&rgb_vec);
+
+            // Compute rotation
+            let orca_rotation_x: f32 = 0.0;
+            let orca_rotation_y: f32 = elapsed % std::f32::consts::TAU;
+            let orca_rotation_z: f32 = 0.0;
+            let orca_rotation_animation_matrix = glm::rotation(orca_rotation_y, &glm::vec3(0.0, 1.0, 0.0));
+            
+            // Compute upp and down motion
+            let orca_linear_y: f32 = 0.5 * (elapsed * 1.0).sin();
+            let orca_linear_animation_matrix = glm::translation(&glm::vec3(0.0, orca_linear_y, 0.0));
+
+            // Define Orca position in world frame
+            let orca_position = &glm::vec3(5.0, 0.0, 0.0);
+
+            // Before we do anything we scale, rotate and put object into start position
+            // 1. Scale
+            // 2. Rotate
+            // 3. Translate
+            let orca_start_transform_matrix: glm::Mat4 = 
+                glm::translation(&orca_position) *
+                glm::rotation(std::f32::consts::PI/2.0, &glm::vec3(0.0, 1.0, 0.0)) *
+                glm::scaling(&glm::vec3(3.0, 3.0, 3.0));
+
+            // Combine matrices to form view projection of rotating orca matrix
+            // 1. Apply start position of Orca
+            // 2. Translate Orca to the origin
+            // 3. Apply rotation animation
+            // 4. Apply translation animation
+            // 5. Translate Orca back to its original position
+            // 6. Apply view-projection transformation
+            let view_projection_matrix_orca: glm::Mat4 = 
+                view_projection_matrix * 
+                glm::translation(&orca_position) *
+                orca_linear_animation_matrix *
+                orca_rotation_animation_matrix *
+                glm::translation(&-orca_position) *
+                orca_start_transform_matrix;
+
+            // * Animate Particles to always face viewer, move around and change color
+            let changing_color_matrix_particles = glm::diagonal4x4(&glm::vec4(1.0, 1.0, 1.0, 1.0));
+
+            // Define particle position in world frame
+            let particles_position = &glm::vec3(1.0, 0.0, 0.0);
+
+            // Before we do anything we scale, rotate and put object into start position
+            // 1. Scale
+            // 2. Rotate
+            // 3. Translate
+            let particles_start_transform_matrix: glm::Mat4 = 
+                glm::translation(&particles_position) *
+                glm::rotation(0.0, &glm::vec3(0.0, 0.0, 0.0)) *
+                glm::scaling(&glm::vec3(0.1, 0.1, 0.1));
+
+            // Compute rotation for particles to always face the camera (START) --------------------------------------------------
+            // Aka billboarding effect
+            // The goal is to align the particle's orientation with the camera's view direction,
+            // making it appear as though the particle always faces the camera regardless of the camera's movement.
+            // Step 1: Calculate the vector from the particle to the camera.
+            // This is done by subtracting the particle's position from the camera's position.
+            // This vector represents the direction from the particle to the camera.
+            let particle_to_camera = camera_position - particles_position;
+            
+            // Step 2: Normalize the particle-to-camera vector to get a direction vector.
+            // The normalized vector provides the direction in standard form (unit length),
+            // which is essential for calculating angles between the particle and the camera's axes.
+            let particle_to_camera_direction = glm::normalize(&particle_to_camera);
+
+            // Step 3: Calculate the yaw angle (rotation around the Y-axis).
+            // We use the x and z components of the particle-to-camera direction vector
+            // to determine how much the particle needs to rotate horizontally to face the camera.
+            let angle_y = particle_to_camera_direction.x.atan2(particle_to_camera_direction.z);  // Yaw (rotation around Y-axis)
+
+            // Step 4: Calculate the pitch angle (rotation around the X-axis).
+            // The pitch is the vertical rotation needed for the particle to align with the camera's view.
+            // We use the y component of the direction vector and the length of the x-z projection 
+            // (which is the horizontal distance) to compute the vertical angle.
+            let angle_x = particle_to_camera_direction.y.atan2(glm::length(&glm::vec2(particle_to_camera_direction.x, particle_to_camera_direction.z)));  // Pitch (rotation around X-axis)
+
+            // Step 5: Create the rotation matrices for yaw and pitch.
+            // These matrices will rotate the particle to face the camera in the horizontal (yaw) and vertical (pitch) directions.
+            let rotation_matrix_y = glm::rotation(angle_y, &glm::vec3(0.0, 1.0, 0.0));  // Yaw rotation (around Y-axis)
+            let rotation_matrix_x = glm::rotation(angle_x, &glm::vec3(1.0, 0.0, 0.0));  // Pitch rotation (around X-axis)
+
+            // Step 6: Apply a 180-degree rotation around the Y-axis to correct the particle's orientation.
+            // Since the camera is often offset by 90 degrees from the world frame (depending on the camera setup),
+            // we need to rotate the particle by 180 degrees around the Y-axis so that the particle's face is correctly aligned with the camera.
+            let rotation_y_180 = glm::rotation(std::f32::consts::PI, &glm::vec3(0.0, 1.0, 0.0));  // 180-degree rotation around Y-axis
+
+            // Step 7: Combine all the rotation matrices to form the final particle rotation matrix.
+            // We first apply the 180-degree correction (rotation_y_90), then the yaw (rotation_matrix_y),
+            // and finally the pitch (rotation_matrix_x). This ensures the particle is rotated correctly to always face the camera.
+            let particles_rotation_animation_matrix = rotation_y_180 * rotation_matrix_y * rotation_matrix_x;
+            // Compute rotation for particles to always face the camera (STOP) --------------------------------------------------
+
+            // Compute linear motion
+            // Introducing a small variable semi random motion
+            let particles_linear_x: f32 = 0.0123 * (elapsed * 0.13).sin(); // Semi random motion in x-axis
+            let particles_linear_y: f32 = 0.0456 * (elapsed * 0.07).sin(); // Semi random motion in y-axis
+            let particles_linear_z: f32 = 0.0789 * (elapsed * 0.74).sin(); // Semi random motion in z-axis
+            let particles_linear_animation_matrix = glm::translation(&glm::vec3(
+                particles_linear_x,
+                particles_linear_y,
+                particles_linear_z
+            ));
+
+            // Combine matrices to form view projection of rotating orca matrix
+            // 1. Apply start position of Orca
+            // 2. Translate Orca to the origin
+            // 3. Apply rotation animation
+            // 4. Apply translation animation
+            // 5. Translate Orca back to its original position
+            // 6. Apply view-projection transformation
+            let view_projection_matrix_particles: glm::Mat4 = 
+                view_projection_matrix * 
+                glm::translation(&particles_position) *
+                particles_linear_animation_matrix *
+                particles_rotation_animation_matrix *
+                glm::translation(&-particles_position) *
+                particles_start_transform_matrix;
 
 
 
@@ -278,62 +375,10 @@ fn main() {
                 gl::ClearColor(0.035, 0.046, 0.078, 1.0); // night sky
                 gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); // Clear the screen
 
-                // * Move Triangles
-                /*
-                // Compute rotation
-                let rotation_x = 0.0;
-                let speed = 1.0; // Adjust the speed of rotation
-                let mut rotation_y = (elapsed * speed) % (2.0 * std::f32::consts::PI); // Keep it between 0 and 2pi
-                println!("Time: {}", rotation_y);
-                let rotation_z = 0.0;
-                let rotated_vertices = util::rotate_vertices(&vertices_triangles, rotation_x, rotation_y, rotation_z);
-                // Update VAO
-                util::update_vao_with_new_vertices(vao_id_triangles, vbo_id_triangles, &rotated_vertices);
-                */
-
-                // * Render Triangles
-                triangle_shader.activate();
-                triangle_shader.set_uniform_mat4("viewProjectionMatrix", &view_projection_matrix);
-
-                gl::BindVertexArray(vao_id_triangles);
-                gl::DrawElements(
-                    gl::TRIANGLES,
-                    indices_triangles.len() as i32,
-                    gl::UNSIGNED_INT,
-                    std::ptr::null()
-                );
-
-
-
-                /*
-                // * Move Orca
-                // Only update the rotation once per second
-                if elapsed - last_rotation_update >= 5.0 {
-                    last_rotation_update = elapsed;
-
-                    // Compute rotation
-                    let rotation_x = 0.0;
-                    let rotation_y = (elapsed * 1.0).sin();
-                    let rotation_z = 0.0;
-                    let rotated_vertices = util::rotate_vertices(&vertices_orca, rotation_x, rotation_y, rotation_z);
-
-                    // Update VAO
-                    util::update_vao_with_new_vertices(vao_id_orca, vbo_id_orca, &rotated_vertices);
-                }
-
-                // * Draw the Orca
-                // Compute a changing color
-                let r = (elapsed * 0.5).sin() * 0.5 + 0.5;
-                let g = (elapsed * 0.7).sin() * 0.5 + 0.5;
-                let b = (elapsed * 0.9).sin() * 0.5 + 0.5;
-
-                // Compute changind scale of square patrtrn
-                let checkerboard_scale: f32 = (elapsed * 0.9).sin();
-
-                // Update shader
-                orca_shader.activate();
-                orca_shader.set_uniform_vec3("ChangingColor", &[r, g, b]);
-                orca_shader.set_uniform_float("scale", checkerboard_scale);
+                // * Render Orca
+                shader_orca.activate();
+                shader_orca.set_uniform_mat4("viewProjectionMatrix", &view_projection_matrix_orca);
+                shader_orca.set_uniform_mat4("changingColorMatrix", &changing_color_matrix_orca);
 
                 gl::BindVertexArray(vao_id_orca);
                 gl::DrawElements(
@@ -342,7 +387,19 @@ fn main() {
                     gl::UNSIGNED_INT,
                     std::ptr::null()
                 );
-                */
+
+                // * Render Particles
+                shader_particles.activate();
+                shader_particles.set_uniform_mat4("viewProjectionMatrix", &view_projection_matrix_particles);
+                shader_particles.set_uniform_mat4("changingColorMatrix", &changing_color_matrix_particles);
+
+                gl::BindVertexArray(vao_id_particles);
+                gl::DrawElements(
+                    gl::TRIANGLES,
+                    indices_particles.len() as i32,
+                    gl::UNSIGNED_INT,
+                    std::ptr::null()
+                );                
             }
 
             // Display the new color buffer on the display

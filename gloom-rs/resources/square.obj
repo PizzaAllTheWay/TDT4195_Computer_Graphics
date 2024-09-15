@@ -1,0 +1,11 @@
+# Square
+
+# Vertices
+v -0.5  0.5  0.1
+v  0.5  0.5  0.1
+v -0.5 -0.5  0.1
+v  0.5 -0.5  0.1
+
+# Faces (two triangles forming the square)
+f 1 2 3
+f 2 4 3
