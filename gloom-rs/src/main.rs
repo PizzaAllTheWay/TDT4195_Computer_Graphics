@@ -53,7 +53,7 @@ fn main() {
     let window_size = Arc::clone(&arc_window_size);
 
     // * Camera variables used in 3D scene to move camera around
-    let mut camera_position = glm::vec3(0.0, 0.0, 1.0);
+    let mut camera_position = glm::vec3(0.0, 0.0, 0.0);
     let camera_speed = 2.0;
     
     let mut camera_yaw: f32 = 0.0;
@@ -222,20 +222,12 @@ fn main() {
 
 
             // * Apply transformations to the world from camera view
-            // Calculate camera perspective
-            let camera_aspect_ratio = window_aspect_ratio;
-            let camera_perspective_matrix: glm::Mat4 = glm::perspective(camera_aspect_ratio, 45.0_f32.to_radians(), 1.0, 100.0);
-            
-            // Calculate camera transformations
-            // Build the view matrix based on the camera position and orientation
-            let camera_rotation_matrix = glm::look_at(
-                &camera_position, 
-                &(camera_position + camera_forward), 
-                &camera_up
+            let view_projection_matrix: glm::Mat4 = util::calculate_transformation_from_camera_to_world_view(
+                window_aspect_ratio,
+                camera_position,
+                camera_forward,
+                camera_up
             );
-
-            // Combine the matrices
-            let view_projection_matrix: glm::Mat4 = camera_perspective_matrix * camera_rotation_matrix;
 
             // * Animate RGB changing color Orca while its spinning and going up and down 
             // Change RGB colors
@@ -248,124 +240,73 @@ fn main() {
             let rgb_vec = glm::vec4(r, g, b, a);
             let changing_color_matrix_orca = glm::diagonal4x4(&rgb_vec);
 
-            // Compute rotation
-            let orca_rotation_x: f32 = 0.0;
-            let orca_rotation_y: f32 = elapsed % std::f32::consts::TAU;
-            let orca_rotation_z: f32 = 0.0;
-            let orca_rotation_animation_matrix = glm::rotation(orca_rotation_y, &glm::vec3(0.0, 1.0, 0.0));
-            
-            // Compute upp and down motion
-            let orca_linear_y: f32 = 0.5 * (elapsed * 1.0).sin();
-            let orca_linear_animation_matrix = glm::translation(&glm::vec3(0.0, orca_linear_y, 0.0));
+            // Define Orca's parameters
+            // Animate movement upp and down
+            let orca_position = glm::vec3(
+                5.0, 
+                0.5 * (elapsed * 1.0).sin(),
+                0.0
+            );
+            // Animate rotation movement spinning around
+            let orca_rotation = glm::vec3(
+                0.0,
+                elapsed % std::f32::consts::TAU,
+                0.0
+            );
 
-            // Define Orca position in world frame
-            let orca_position = &glm::vec3(5.0, 0.0, 0.0);
+            let orca_scale = glm::vec3(
+                3.0,
+                3.0,
+                3.0
+            );
 
-            // Before we do anything we scale, rotate and put object into start position
-            // 1. Scale
-            // 2. Rotate
-            // 3. Translate
-            let orca_start_transform_matrix: glm::Mat4 = 
-                glm::translation(&orca_position) *
-                glm::rotation(std::f32::consts::PI/2.0, &glm::vec3(0.0, 1.0, 0.0)) *
-                glm::scaling(&glm::vec3(3.0, 3.0, 3.0));
-
-            // Combine matrices to form view projection of rotating orca matrix
-            // 1. Apply start position of Orca
-            // 2. Translate Orca to the origin
-            // 3. Apply rotation animation
-            // 4. Apply translation animation
-            // 5. Translate Orca back to its original position
-            // 6. Apply view-projection transformation
-            let view_projection_matrix_orca: glm::Mat4 = 
-                view_projection_matrix * 
-                glm::translation(&orca_position) *
-                orca_linear_animation_matrix *
-                orca_rotation_animation_matrix *
-                glm::translation(&-orca_position) *
-                orca_start_transform_matrix;
+            // Call the generalized transformation function for object transformation
+            let view_projection_matrix_orca = util::calculate_transformation_object(
+                orca_position,
+                orca_rotation,
+                orca_scale,
+                view_projection_matrix
+            );
 
             // * Animate Particles to always face viewer, move around and change color
-            let changing_color_matrix_particles = glm::diagonal4x4(&glm::vec4(1.0, 1.0, 1.0, 1.0));
+            // Change RGB colors
+            let r: f32 = (elapsed *   0.009 ).sin() + 0.5;
+            let g: f32 = (elapsed *   0.007 ).sin() + 0.5;
+            let b: f32 = (elapsed * (-0.009)).sin() + 0.5;
+            let a: f32 = 1.0;
 
-            // Define particle position in world frame
-            let particles_position = &glm::vec3(1.0, 0.0, 0.0);
+            // Create a diagonal 4x4 RGBA matrix for scaling
+            let rgb_vec = glm::vec4(r, g, b, a);
+            let changing_color_matrix_particles = glm::diagonal4x4(&rgb_vec);
 
-            // Before we do anything we scale, rotate and put object into start position
-            // 1. Scale
-            // 2. Rotate
-            // 3. Translate
-            let particles_start_transform_matrix: glm::Mat4 = 
-                glm::translation(&particles_position) *
-                glm::rotation(0.0, &glm::vec3(0.0, 0.0, 0.0)) *
-                glm::scaling(&glm::vec3(0.1, 0.1, 0.1));
+            // Define Orca's parameters
+            // Semi random motion slow motion in 3D space
+            let particles_position = glm::vec3(
+                0.0123 * (elapsed * 0.13).sin() + 1.0,
+                0.0456 * (elapsed * 0.07).sin() + 0.0,
+                0.0789 * (elapsed * 0.74).sin() + 0.0
+            );
+            // Camera view is facing 180* from the object, we must therefore turn it around 180*
+            let particles_rotation = glm::vec3(
+                0.0,
+                std::f32::consts::PI,
+                0.0
+            );
 
-            // Compute rotation for particles to always face the camera (START) --------------------------------------------------
-            // Aka billboarding effect
-            // The goal is to align the particle's orientation with the camera's view direction,
-            // making it appear as though the particle always faces the camera regardless of the camera's movement.
-            // Step 1: Calculate the vector from the particle to the camera.
-            // This is done by subtracting the particle's position from the camera's position.
-            // This vector represents the direction from the particle to the camera.
-            let particle_to_camera = camera_position - particles_position;
-            
-            // Step 2: Normalize the particle-to-camera vector to get a direction vector.
-            // The normalized vector provides the direction in standard form (unit length),
-            // which is essential for calculating angles between the particle and the camera's axes.
-            let particle_to_camera_direction = glm::normalize(&particle_to_camera);
+            let particles_scale = glm::vec3(
+                0.1,
+                0.1,
+                0.1
+            );
 
-            // Step 3: Calculate the yaw angle (rotation around the Y-axis).
-            // We use the x and z components of the particle-to-camera direction vector
-            // to determine how much the particle needs to rotate horizontally to face the camera.
-            let angle_y = particle_to_camera_direction.x.atan2(particle_to_camera_direction.z);  // Yaw (rotation around Y-axis)
-
-            // Step 4: Calculate the pitch angle (rotation around the X-axis).
-            // The pitch is the vertical rotation needed for the particle to align with the camera's view.
-            // We use the y component of the direction vector and the length of the x-z projection 
-            // (which is the horizontal distance) to compute the vertical angle.
-            let angle_x = particle_to_camera_direction.y.atan2(glm::length(&glm::vec2(particle_to_camera_direction.x, particle_to_camera_direction.z)));  // Pitch (rotation around X-axis)
-
-            // Step 5: Create the rotation matrices for yaw and pitch.
-            // These matrices will rotate the particle to face the camera in the horizontal (yaw) and vertical (pitch) directions.
-            let rotation_matrix_y = glm::rotation(angle_y, &glm::vec3(0.0, 1.0, 0.0));  // Yaw rotation (around Y-axis)
-            let rotation_matrix_x = glm::rotation(angle_x, &glm::vec3(1.0, 0.0, 0.0));  // Pitch rotation (around X-axis)
-
-            // Step 6: Apply a 180-degree rotation around the Y-axis to correct the particle's orientation.
-            // Since the camera is often offset by 90 degrees from the world frame (depending on the camera setup),
-            // we need to rotate the particle by 180 degrees around the Y-axis so that the particle's face is correctly aligned with the camera.
-            let rotation_y_180 = glm::rotation(std::f32::consts::PI, &glm::vec3(0.0, 1.0, 0.0));  // 180-degree rotation around Y-axis
-
-            // Step 7: Combine all the rotation matrices to form the final particle rotation matrix.
-            // We first apply the 180-degree correction (rotation_y_90), then the yaw (rotation_matrix_y),
-            // and finally the pitch (rotation_matrix_x). This ensures the particle is rotated correctly to always face the camera.
-            let particles_rotation_animation_matrix = rotation_y_180 * rotation_matrix_y * rotation_matrix_x;
-            // Compute rotation for particles to always face the camera (STOP) --------------------------------------------------
-
-            // Compute linear motion
-            // Introducing a small variable semi random motion
-            let particles_linear_x: f32 = 0.0123 * (elapsed * 0.13).sin(); // Semi random motion in x-axis
-            let particles_linear_y: f32 = 0.0456 * (elapsed * 0.07).sin(); // Semi random motion in y-axis
-            let particles_linear_z: f32 = 0.0789 * (elapsed * 0.74).sin(); // Semi random motion in z-axis
-            let particles_linear_animation_matrix = glm::translation(&glm::vec3(
-                particles_linear_x,
-                particles_linear_y,
-                particles_linear_z
-            ));
-
-            // Combine matrices to form view projection of rotating orca matrix
-            // 1. Apply start position of Orca
-            // 2. Translate Orca to the origin
-            // 3. Apply rotation animation
-            // 4. Apply translation animation
-            // 5. Translate Orca back to its original position
-            // 6. Apply view-projection transformation
-            let view_projection_matrix_particles: glm::Mat4 = 
-                view_projection_matrix * 
-                glm::translation(&particles_position) *
-                particles_linear_animation_matrix *
-                particles_rotation_animation_matrix *
-                glm::translation(&-particles_position) *
-                particles_start_transform_matrix;
+            // Call the generalized transformation function for billboard transformation
+            let view_projection_matrix_particles: glm::Mat4 = util::calculate_transformation_billboard(
+                particles_position,
+                particles_rotation,
+                particles_scale,
+                camera_position,
+                view_projection_matrix
+            );
 
 
 

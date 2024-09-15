@@ -1,4 +1,5 @@
 use std::{ffi::CString, mem, os::raw::c_void, path::Path};
+use glm::angle;
 use libc;
 
 pub unsafe fn get_gl_string(name: gl::types::GLenum) -> String {
@@ -491,6 +492,155 @@ pub fn calculate_right_vector(yaw: f32) -> glm::Vec3 {
 
 pub fn calculate_up_vector(forward: glm::Vec3, right: glm::Vec3) -> glm::Vec3 {
     glm::cross(&right, &forward).normalize()
+}
+
+
+
+// * Apply transformations to the world from camera view
+pub fn calculate_transformation_from_camera_to_world_view(
+    window_aspect_ratio: f32,
+    camera_position: glm::Vec3,
+    camera_forward: glm::Vec3,
+    camera_up: glm::Vec3
+) -> glm::Mat4 {
+    // Calculate camera perspective
+    let camera_aspect_ratio = window_aspect_ratio;
+    let camera_perspective_matrix: glm::Mat4 = glm::perspective(camera_aspect_ratio, 45.0_f32.to_radians(), 1.0, 100.0);
+
+    // Calculate camera transformations
+    // Build the view matrix based on the camera position and orientation
+    let camera_rotation_matrix = glm::look_at(
+        &camera_position, 
+        &(camera_position + camera_forward), 
+        &camera_up
+    );
+
+    // Combine the matrices
+    let view_projection_matrix: glm::Mat4 = camera_perspective_matrix * camera_rotation_matrix;
+
+    // Return
+    return view_projection_matrix;
+}
+
+
+
+// * Generalized transformation function
+// This function calculates the full transformation matrix for an object, including its position, 
+// rotation, and scaling, and applies the view-projection matrix from the camera.
+// Parameters:
+// - `position`: The object's position in world coordinates.
+// - `rotation`: The object's rotation angles around each axis (x, y, z) in radians.
+// - `scale`: The scaling factor for the object in each direction (x, y, z).
+// - `view_projection_matrix`: The combined view-projection matrix from the camera.
+pub fn calculate_transformation_object(
+    position: glm::Vec3,
+    rotation: glm::Vec3,
+    scale: glm::Vec3,
+    view_projection_matrix: glm::Mat4,
+) -> glm::Mat4 {
+    // Compute rotation in Objects frame
+    let object_rotation_matrix_x = glm::rotation(rotation.x, &glm::vec3(1.0, 0.0, 0.0));
+    let object_rotation_matrix_y = glm::rotation(rotation.y, &glm::vec3(0.0, 1.0, 0.0));
+    let object_rotation_matrix_z = glm::rotation(rotation.z, &glm::vec3(0.0, 0.0, 1.0));
+
+    let object_rotation_matrix: glm::Mat4 = 
+        object_rotation_matrix_z * 
+        object_rotation_matrix_y *
+        object_rotation_matrix_x;
+
+    // Before we do anything else we scale, rotate and put object into start position
+    // 1. Scale
+    // 2. Rotate
+    // 3. Translate
+    let object_transform_matrix: glm::Mat4 = 
+        glm::translation(&position) *
+        object_rotation_matrix *
+        glm::scaling(&scale);
+
+    // Combine matrices to form view projection of rotating orca matrix
+    // 1. Apply start position of Orca
+    // 2. Translate Orca to the origin
+    // 3. Apply rotation animation
+    // 4. Apply translation animation
+    // 5. Translate Orca back to its original position
+    // 6. Apply view-projection transformation
+    let view_projection_matrix_object: glm::Mat4 = 
+        view_projection_matrix * 
+        object_transform_matrix;
+    
+    // Return
+    return view_projection_matrix_object;
+}
+
+
+
+
+// * Animate Particles to always face viewer, move around and change color
+pub fn calculate_transformation_billboard(
+    position: glm::Vec3,
+    rotation: glm::Vec3,
+    scale: glm::Vec3,
+    camera_position: glm::Vec3,
+    view_projection_matrix: glm::Mat4,
+) -> glm::Mat4 {
+    // Compute rotation for particles to always face the camera (START) --------------------------------------------------
+    // Aka billboard'ing effect
+    // The goal is to align the particle's orientation with the camera's view direction,
+    // making it appear as though the particle always faces the camera regardless of the camera's movement.
+    // Step 1: Calculate the vector from the particle to the camera.
+    // This is done by subtracting the particle's position from the camera's position.
+    // This vector represents the direction from the particle to the camera.
+    let billboard_to_camera = camera_position - position;
+
+    // Step 2: Normalize the particle-to-camera vector to get a direction vector.
+    // The normalized vector provides the direction in standard form (unit length),
+    // which is essential for calculating angles between the particle and the camera's axes.
+    let billboard_to_camera_direction = glm::normalize(&billboard_to_camera);
+
+    // Step 3: Calculate the pitch angle (rotation around the X-axis).
+    // The pitch is the vertical rotation needed for the particle to align with the camera's view.
+    // We use the y component of the direction vector and the length of the x-z projection 
+    // (which is the horizontal distance) to compute the vertical angle.
+    let billboard_angle_x = billboard_to_camera_direction.y.atan2(glm::length(&glm::vec2(billboard_to_camera_direction.x, billboard_to_camera_direction.z)));  // Pitch (rotation around X-axis)
+
+    // Step 4: Calculate the yaw angle (rotation around the Y-axis).
+    // We use the x and z components of the particle-to-camera direction vector
+    // to determine how much the particle needs to rotate horizontally to face the camera.
+    let billboard_angle_y = billboard_to_camera_direction.x.atan2(billboard_to_camera_direction.z);  // Yaw (rotation around Y-axis)
+    
+    // Step 5: Create the rotation matrices for yaw and pitch.
+    // These matrices will rotate the particle to face the camera in the horizontal (yaw) and vertical (pitch) directions.
+    // Also calculate z angle (roll)
+    let billboard_rotation_matrix_x = glm::rotation(billboard_angle_x + rotation.x, &glm::vec3(1.0, 0.0, 0.0));  // Pitch rotation (around X-axis)
+    let billboard_rotation_matrix_y = glm::rotation(billboard_angle_y + rotation.y, &glm::vec3(0.0, 1.0, 0.0));  // Yaw rotation (around Y-axis)
+    let billboard_rotation_matrix_z = glm::rotation(rotation.z, &glm::vec3(0.0, 0.0, 1.0));  // Yaw rotation (around Y-axis)
+    
+    // Step 6: Combine all the rotation matrices to form the final particle rotation matrix
+    let billboard_rotation_matrix = billboard_rotation_matrix_z * billboard_rotation_matrix_y * billboard_rotation_matrix_x;
+    // Compute rotation for particles to always face the camera (STOP) --------------------------------------------------
+
+    // Before we do anything else we scale, rotate and put object into start position
+    // 1. Scale
+    // 2. Rotate
+    // 3. Translate
+    let billboard_transform_matrix: glm::Mat4 = 
+        glm::translation(&position) *
+        billboard_rotation_matrix *
+        glm::scaling(&scale);
+
+    // Combine matrices to form view projection of rotating orca matrix
+    // 1. Apply start position of Orca
+    // 2. Translate Orca to the origin
+    // 3. Apply rotation animation
+    // 4. Apply translation animation
+    // 5. Translate Orca back to its original position
+    // 6. Apply view-projection transformation
+    let view_projection_matrix_billboard: glm::Mat4 = 
+        view_projection_matrix * 
+        billboard_transform_matrix;
+    
+    // Return
+    return view_projection_matrix_billboard;
 }
 
 
