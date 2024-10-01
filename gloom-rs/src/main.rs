@@ -13,8 +13,8 @@ use std::sync::{Mutex, Arc, RwLock};
 
 mod shader;
 mod util;
+mod mesh;
 
-use glm::scaling;
 use glutin::event::{Event, WindowEvent, DeviceEvent, KeyboardInput, ElementState::{Pressed, Released}, VirtualKeyCode::{self, *}};
 use glutin::event_loop::ControlFlow;
 
@@ -53,8 +53,9 @@ fn main() {
     let window_size = Arc::clone(&arc_window_size);
 
     // * Camera variables used in 3D scene to move camera around
+    
     let mut camera_position = glm::vec3(0.0, 0.0, 0.0);
-    let camera_speed = 2.0;
+    let camera_speed = 40.0;
     
     let mut camera_yaw: f32 = 0.0;
     let mut camera_pitch: f32 = 0.0;
@@ -93,91 +94,18 @@ fn main() {
             println!("GLSL\t: {}", util::get_gl_string(gl::SHADING_LANGUAGE_VERSION));
         }
 
-        // * Load Objects
-        // Load Orca model
-        let (vertices_orca, normals_orca, texcoords_orca, indices_orca) = util::load_obj("resources/orca.obj");
-        
-        // Load square model
-        let (vertices_square, normals_square, texcoords_square, indices_square) = util::load_obj("resources/square.obj");
-
-        // * Create data structure for Orca
-        // Since many vertices in the orca model, set up an initial color buffer
-        // NOTE: The Orca object is rendered with a dynamic RGB color matrix later on. 
-        // The values here represent the base RGB percentages, which will be scaled by the shader's color transformation.
-        // Each vertex is assigned a base color (in this case, a shade of blue with partial transparency).
-        let mut color_orca: Vec<f32> = Vec::new();
-        for _ in 0..indices_orca.len() {
-            // Append color for each vertex
-            color_orca.extend_from_slice(&[0.3, 0.6, 1.0, 0.5]);
-        }
-
-        // * Create data structure for particle effects
-        // Number of particles for the effect
-        let num_particles: usize = 1000;
-
-        // Initialize arrays for particle data
-        let mut vertices_particles: Vec<f32> = Vec::new();
-        let mut colors_particles: Vec<f32> = Vec::new();
-        let mut indices_particles: Vec<u32> = Vec::new();
-
-        // Generate random particle positions and colors based on elapsed time as a seed
-        for i in 0..num_particles {
-            let random_x = util::random_float_in_range(-200.0, 200.0);
-            let random_y = util::random_float_in_range(-200.0, 200.0);
-            let random_z = util::random_float_in_range(-200.0, 200.0);
-
-            // Randomly generate particle positions
-            let particle_position = glm::vec3(random_x, random_y, random_z);
-
-            // Translate vertices for each particle to a random position
-            let translated_vertices = util::translate_vertices(&vertices_square, particle_position.x, particle_position.y, particle_position.z);
-            
-            // Append the translated vertices to the particle arrays
-            vertices_particles.extend(translated_vertices);
-
-            // Generate random color for each vertex (RGB with alpha 0.8)
-            let random_r = util::random_float_in_range(0.40, 1.0);  // Random red value
-            let random_g = util::random_float_in_range(0.01, 0.3);  // Random green value
-            let random_b = util::random_float_in_range(0.50, 1.0);  // Random blue value
-
-            // Each vertex of the square gets the same random color
-            for _ in 0..(indices_square.len()) {
-                colors_particles.extend_from_slice(&[random_r, random_g, random_b, 0.8]); // Random color with alpha
-            }
-
-            // Adjust indices for each particle
-            let offset = (vertices_square.len() / 3 * i) as u32;
-            for &index in indices_square.iter() {
-                indices_particles.push(index + offset);
-            }
-        }
-
-
-
-        // * Set up VAO
-        let (vao_id_orca, vbo_id_orca): (u32, u32) = unsafe { 
-            util::create_vao(&vertices_orca, &indices_orca, &color_orca, &texcoords_orca)          
-        };
-
-        let (vao_id_particles, vbo_id_particles): (u32, u32) = unsafe { 
-            util::create_vao(&vertices_particles, &indices_particles, &colors_particles, &texcoords_square)          
-        };
-
-
-
         // * Load, Compile and Link the shader pair
-        let shader_orca = unsafe {
+        let shader_terrain = unsafe {
             shader::ShaderBuilder::new()
-                .attach_file("shaders/orca.vert")
-                .attach_file("shaders/orca.frag")
+                .attach_file("shaders/simple.vert")
+                .attach_file("shaders/simple.frag")
                 .link()
         };
 
-        let shader_particles = unsafe {
-            shader::ShaderBuilder::new()
-                .attach_file("shaders/particles.vert")
-                .attach_file("shaders/particles.frag")
-                .link()
+        let lunar_surface = mesh::Terrain::load("resources/lunarsurface.obj");
+
+        let (vao_id_terrain, vbo_id_terrain): (u32, u32) = unsafe { 
+            util::create_vao(&lunar_surface.vertices, &lunar_surface.indices, &lunar_surface.colors, &lunar_surface.normals)          
         };
 
         // The main rendering loop
@@ -241,7 +169,6 @@ fn main() {
             }
 
 
-
             // * Apply transformations to the world from camera view
             let view_projection_matrix: glm::Mat4 = util::calculate_transformation_from_camera_to_world_view(
                 window_aspect_ratio,
@@ -250,87 +177,6 @@ fn main() {
                 camera_up
             );
 
-            // * Animate RGB changing color Orca while its spinning and going up and down 
-            // Change RGB colors
-            let r: f32 = (elapsed * 0.5).sin() * 0.5 + 0.5;
-            let g: f32 = (elapsed * 0.7).sin() * 0.5 + 0.5;
-            let b: f32 = (elapsed * 0.9).sin() * 0.5 + 0.5;
-            let a: f32 = 1.0;
-
-            // Create a diagonal 4x4 RGBA matrix for scaling
-            let rgb_vec = glm::vec4(r, g, b, a);
-            let changing_color_matrix_orca = glm::diagonal4x4(&rgb_vec);
-
-            // Define Orca's parameters
-            // Animate movement upp and down
-            let orca_position = glm::vec3(
-                5.0, 
-                0.5 * (elapsed * 1.0).sin(),
-                0.0
-            );
-            // Animate rotation movement spinning around
-            let orca_rotation = glm::vec3(
-                0.0,
-                elapsed % std::f32::consts::TAU,
-                0.0
-            );
-
-            let orca_scale = glm::vec3(
-                3.0,
-                3.0,
-                3.0
-            );
-
-            // Call the generalized transformation function for object transformation
-            let view_projection_matrix_orca = util::calculate_transformation_object(
-                orca_position,
-                orca_rotation,
-                orca_scale,
-                view_projection_matrix
-            );
-
-            // * Animate Particles to always face viewer, move around and change color
-            // Change RGB colors
-            let r: f32 = (elapsed *   0.009 ).sin() + 0.5;
-            let g: f32 = (elapsed *   0.007 ).sin() + 0.5;
-            let b: f32 = (elapsed * (-0.009)).sin() + 0.5;
-            let a: f32 = 1.0;
-
-            // Create a diagonal 4x4 RGBA matrix for scaling
-            let rgb_vec = glm::vec4(r, g, b, a);
-            let changing_color_matrix_particles = glm::diagonal4x4(&rgb_vec);
-
-            // Define Particles parameters
-            // Semi random motion slow motion in 3D space
-            let particles_position = glm::vec3(
-                0.0123 * (elapsed * 0.13).sin() + 5.0,
-                0.0456 * (elapsed * 0.07).sin() + 0.0,
-                0.0789 * (elapsed * 0.74).sin() + 0.0
-            );
-            // Camera view is facing 180* from the object, we must therefore turn it around 180*
-            let particles_rotation = glm::vec3(
-                0.0,
-                std::f32::consts::PI,
-                0.0
-            );
-
-            let particles_scale = glm::vec3(
-                0.02,
-                0.02,
-                0.02
-            );
-
-            // Call the generalized transformation function for billboard transformation
-            let view_projection_matrix_particles: glm::Mat4 = util::calculate_transformation_billboard(
-                particles_position,
-                particles_rotation,
-                particles_scale,
-                camera_position,
-                view_projection_matrix
-            );
-
-
-
             // * Render Objects
             unsafe {
                 // Clear the color and depth buffers
@@ -338,30 +184,17 @@ fn main() {
                 gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT); // Clear the screen
 
                 // * Render Orca
-                shader_orca.activate();
-                shader_orca.set_uniform_mat4("viewProjectionMatrix", &view_projection_matrix_orca);
-                shader_orca.set_uniform_mat4("changingColorMatrix", &changing_color_matrix_orca);
+                shader_terrain.activate();
+                shader_terrain.set_uniform_mat4("transformation_matrix", &view_projection_matrix);
 
-                gl::BindVertexArray(vao_id_orca);
+                gl::BindVertexArray(vao_id_terrain);
                 gl::DrawElements(
                     gl::TRIANGLES,
-                    indices_orca.len() as i32,
+                    lunar_surface.indices.len() as i32,
                     gl::UNSIGNED_INT,
                     std::ptr::null()
                 );
-
-                // * Render Particles
-                shader_particles.activate();
-                shader_particles.set_uniform_mat4("viewProjectionMatrix", &view_projection_matrix_particles);
-                shader_particles.set_uniform_mat4("changingColorMatrix", &changing_color_matrix_particles);
-
-                gl::BindVertexArray(vao_id_particles);
-                gl::DrawElements(
-                    gl::TRIANGLES,
-                    indices_particles.len() as i32,
-                    gl::UNSIGNED_INT,
-                    std::ptr::null()
-                );                
+              
             }
 
             // Display the new color buffer on the display

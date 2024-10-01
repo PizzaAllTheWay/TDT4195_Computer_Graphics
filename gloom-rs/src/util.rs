@@ -1,5 +1,4 @@
 use std::{ffi::CString, mem, os::raw::c_void, path::Path};
-use glm::angle;
 use libc;
 use rand::prelude::*;
 
@@ -120,7 +119,7 @@ pub unsafe fn create_vao(
     vertices: &Vec<f32>, 
     indices: &Vec<u32>, 
     colors: &Vec<f32>,
-    texcoords: &Vec<f32>
+    normals: &Vec<f32>
 ) -> (u32, u32) {
     // * Generate a VAO and bind it (Vertex Array Object)
     /*
@@ -195,6 +194,7 @@ pub unsafe fn create_vao(
      
      Lastly We enable VAP :)
      */
+
     let position_attribute_index: u32 = 0;
     let number_of_vertexes_per_triangle: i32 = 3;
     let stride: i32 = number_of_vertexes_per_triangle * size_of::<f32>();
@@ -203,7 +203,7 @@ pub unsafe fn create_vao(
         number_of_vertexes_per_triangle,
         gl::FLOAT,
         gl::FALSE,
-        stride,
+        0,
         std::ptr::null()
     );
     gl::EnableVertexAttribArray(position_attribute_index); // Array/Pointer, same stuff at the end of the day, just some renaming, still enables VAP
@@ -248,38 +248,60 @@ pub unsafe fn create_vao(
             color_components_per_vertex,
             gl::FLOAT,
             gl::FALSE,
-            color_components_per_vertex * size_of::<f32>(),
+            0,
             std::ptr::null(),
         );
         gl::EnableVertexAttribArray(color_attribute_index);
     }
 
     // * Generate a VBO and bind it (Vertex Buffer Object) for texture coordinates
-    if !texcoords.is_empty() {
-        let mut vbo_id_texcoords: u32 = 0;
-        gl::GenBuffers(1, &mut vbo_id_texcoords);
-        gl::BindBuffer(gl::ARRAY_BUFFER, vbo_id_texcoords);
-        gl::BufferData(
-            gl::ARRAY_BUFFER,
-            byte_size_of_array(texcoords),
-            pointer_to_array(texcoords),
-            gl::STATIC_DRAW,
-        );
-    }
+    // if !texcoords.is_empty() {
+    //     let mut vbo_id_texcoords: u32 = 0;
+    //     gl::GenBuffers(1, &mut vbo_id_texcoords);
+    //     gl::BindBuffer(gl::ARRAY_BUFFER, vbo_id_texcoords);
+    //     gl::BufferData(
+    //         gl::ARRAY_BUFFER,
+    //         byte_size_of_array(texcoords),
+    //         pointer_to_array(texcoords),
+    //         gl::STATIC_DRAW,
+    //     );
+    // }
 
     // * Configure a VAP for the texture coordinates and enable it
-    if !texcoords.is_empty() {
-        let texcoord_attribute_index: u32 = 2; // Assuming this is at location 2 in your shader
-        gl::VertexAttribPointer(
-            texcoord_attribute_index,
-            2,  // Texture coordinates have 2 components (u, v)
-            gl::FLOAT,
-            gl::FALSE,
-            2 * size_of::<f32>(),
-            std::ptr::null(),
-        );
-        gl::EnableVertexAttribArray(texcoord_attribute_index);
-    }
+    // if !texcoords.is_empty() {
+    //     let texcoord_attribute_index: u32 = 2; // Assuming this is at location 2 in your shader
+    //     gl::VertexAttribPointer(
+    //         texcoord_attribute_index,
+    //         2,  // Texture coordinates have 2 components (u, v)
+    //         gl::FLOAT,
+    //         gl::FALSE,
+    //         2 * size_of::<f32>(),
+    //         std::ptr::null(),
+    //     );
+    //     gl::EnableVertexAttribArray(texcoord_attribute_index);
+    // }
+
+    let mut normals_id: u32 = 0;
+    gl::GenBuffers(1, &mut normals_id);
+    gl::BindBuffer(gl::ARRAY_BUFFER, normals_id);
+    gl::BufferData(
+        gl::ARRAY_BUFFER,
+        byte_size_of_array(normals),
+        pointer_to_array(normals),
+        gl::STATIC_DRAW
+    );
+
+    let normal_attribute_index: u32 = 2;
+    let number_of_normals_per_triangle: i32 = 3;
+    gl::VertexAttribPointer(
+        normal_attribute_index,
+        number_of_normals_per_triangle,
+        gl::FLOAT,
+        gl::FALSE,
+        0,
+        std::ptr::null()
+    );
+    gl::EnableVertexAttribArray(normal_attribute_index); 
 
     // * Generate a IBO and bind it (Indices Buffer Object)
     /*
@@ -506,7 +528,7 @@ pub fn calculate_transformation_from_camera_to_world_view(
 ) -> glm::Mat4 {
     // Calculate camera perspective
     let camera_aspect_ratio = window_aspect_ratio;
-    let camera_perspective_matrix: glm::Mat4 = glm::perspective(camera_aspect_ratio, 45.0_f32.to_radians(), 1.0, 100.0);
+    let camera_perspective_matrix: glm::Mat4 = glm::perspective(camera_aspect_ratio, 45.0_f32.to_radians(), 1.0, 1000.0);
 
     // Calculate camera transformations
     // Build the view matrix based on the camera position and orientation
@@ -572,79 +594,6 @@ pub fn calculate_transformation_object(
     // Return
     return view_projection_matrix_object;
 }
-
-
-
-
-// * Animate Particles to always face viewer, move around and change color
-pub fn calculate_transformation_billboard(
-    position: glm::Vec3,
-    rotation: glm::Vec3,
-    scale: glm::Vec3,
-    camera_position: glm::Vec3,
-    view_projection_matrix: glm::Mat4,
-) -> glm::Mat4 {
-    // Compute rotation for particles to always face the camera (START) --------------------------------------------------
-    // Aka billboard'ing effect
-    // The goal is to align the particle's orientation with the camera's view direction,
-    // making it appear as though the particle always faces the camera regardless of the camera's movement.
-    // Step 1: Calculate the vector from the particle to the camera.
-    // This is done by subtracting the particle's position from the camera's position.
-    // This vector represents the direction from the particle to the camera.
-    let billboard_to_camera = camera_position - position;
-
-    // Step 2: Normalize the particle-to-camera vector to get a direction vector.
-    // The normalized vector provides the direction in standard form (unit length),
-    // which is essential for calculating angles between the particle and the camera's axes.
-    let billboard_to_camera_direction = glm::normalize(&billboard_to_camera);
-
-    // Step 3: Calculate the pitch angle (rotation around the X-axis).
-    // The pitch is the vertical rotation needed for the particle to align with the camera's view.
-    // We use the y component of the direction vector and the length of the x-z projection 
-    // (which is the horizontal distance) to compute the vertical angle.
-    let billboard_angle_x = billboard_to_camera_direction.y.atan2(glm::length(&glm::vec2(billboard_to_camera_direction.x, billboard_to_camera_direction.z)));  // Pitch (rotation around X-axis)
-
-    // Step 4: Calculate the yaw angle (rotation around the Y-axis).
-    // We use the x and z components of the particle-to-camera direction vector
-    // to determine how much the particle needs to rotate horizontally to face the camera.
-    let billboard_angle_y = billboard_to_camera_direction.x.atan2(billboard_to_camera_direction.z);  // Yaw (rotation around Y-axis)
-    
-    // Step 5: Create the rotation matrices for yaw and pitch.
-    // These matrices will rotate the particle to face the camera in the horizontal (yaw) and vertical (pitch) directions.
-    // Also calculate z angle (roll)
-    let billboard_rotation_matrix_x = glm::rotation(billboard_angle_x + rotation.x, &glm::vec3(1.0, 0.0, 0.0));  // Pitch rotation (around X-axis)
-    let billboard_rotation_matrix_y = glm::rotation(billboard_angle_y + rotation.y, &glm::vec3(0.0, 1.0, 0.0));  // Yaw rotation (around Y-axis)
-    let billboard_rotation_matrix_z = glm::rotation(rotation.z, &glm::vec3(0.0, 0.0, 1.0));  // Yaw rotation (around Y-axis)
-    
-    // Step 6: Combine all the rotation matrices to form the final particle rotation matrix
-    let billboard_rotation_matrix = billboard_rotation_matrix_z * billboard_rotation_matrix_y * billboard_rotation_matrix_x;
-    // Compute rotation for particles to always face the camera (STOP) --------------------------------------------------
-
-    // Before we do anything else we scale, rotate and put object into start position
-    // 1. Scale
-    // 2. Rotate
-    // 3. Translate
-    let billboard_transform_matrix: glm::Mat4 = 
-        glm::translation(&position) *
-        billboard_rotation_matrix *
-        glm::scaling(&scale);
-
-    // Combine matrices to form view projection of rotating orca matrix
-    // 1. Apply start position of Orca
-    // 2. Translate Orca to the origin
-    // 3. Apply rotation animation
-    // 4. Apply translation animation
-    // 5. Translate Orca back to its original position
-    // 6. Apply view-projection transformation
-    let view_projection_matrix_billboard: glm::Mat4 = 
-        view_projection_matrix * 
-        billboard_transform_matrix;
-    
-    // Return
-    return view_projection_matrix_billboard;
-}
-
-
 
 
 // * Random float generator
