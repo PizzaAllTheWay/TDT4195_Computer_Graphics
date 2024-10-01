@@ -528,7 +528,7 @@ pub fn calculate_transformation_from_camera_to_world_view(
 ) -> glm::Mat4 {
     // Calculate camera perspective
     let camera_aspect_ratio = window_aspect_ratio;
-    let camera_perspective_matrix: glm::Mat4 = glm::perspective(camera_aspect_ratio, 45.0_f32.to_radians(), 1.0, 1000.0);
+    let camera_perspective_matrix: glm::Mat4 = glm::perspective(camera_aspect_ratio, 45.0_f32.to_radians(), 1.0, 10000.0);
 
     // Calculate camera transformations
     // Build the view matrix based on the camera position and orientation
@@ -602,5 +602,6 @@ pub fn random_float_in_range(min: f32, max: f32) -> f32 {
     let range = max - min;
     rng.gen::<f32>() * range + min
 }
+
 
 

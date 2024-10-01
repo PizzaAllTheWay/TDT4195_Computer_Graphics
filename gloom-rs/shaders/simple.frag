@@ -10,7 +10,7 @@ void main() {
     vec3 lightDirection = normalize(vec3(0.8, -0.5, 0.6));
     
     // Normalize the fragment normal vector
-    vec3 normal = normalize(fragNormal);
+    vec3 normal = fragNormal;
     
     // Light intensity using Lambertian model
     float lightIntensity = max(dot(normal, -lightDirection), 0.0);
